@@ -1,4 +1,54 @@
 import 'server-only'
+import { createAdminClient, createServerComponentClient } from '@/lib/supabase'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+export async function POST() {
+  const supa = createServerComponentClient()
+  const { data: { user } } = await supa.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const admin = createAdminClient()
+  // Ensure leads exist for this user
+  const { data: leads } = await admin
+    .from('leads')
+    .select('email, name, company')
+    .eq('owner_email', (user as any).email)
+    .limit(20)
+
+  if (!leads || leads.length === 0) {
+    return new Response(JSON.stringify({ ok: false, error: 'no_leads' }), { status: 400, headers: { 'content-type': 'application/json' } })
+  }
+
+  // Create queued sends for a 3-step sequence with delays baked into subject/body placeholders
+  const steps = [
+    { subject: 'Quick idea for {{company}}', body: 'Hi {{name}},\n\nBuilt a tool that boosts cold email replies for indie founders/agencies. 3-min demo?\n\n%UNSUB%' },
+    { subject: 'Worth a look for {{company}}?', body: 'Hey {{name}},\n\nCircling back on SmartSend. Most teams see 2–3x replies. Shall I send a Loom?\n\n%UNSUB%' },
+    { subject: '{{name}}, closing the loop', body: 'Last note—happy to spin up a free campaign for {{company}} to prove it works.\n\n%UNSUB%' },
+  ]
+  const rows = leads.flatMap(l => steps.map(s => ({
+    user_id: user.id,
+    to_email: l.email,
+    subject: s.subject.replace('{{company}}', l.company || 'your team').replace('{{name}}', l.name || 'there'),
+    body: s.body.replace('{{company}}', l.company || 'your team').replace('{{name}}', l.name || 'there'),
+    status: 'queued',
+  })))
+
+  const { error: queueErr } = await admin.from('email_sends').insert(rows)
+  if (queueErr) return new Response(JSON.stringify({ ok: false, error: 'queue_failed' }), { status: 500, headers: { 'content-type': 'application/json' } })
+
+  // Trigger sender run (best-effort)
+  try { await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/sender/run`, { method: 'POST' }) } catch {}
+
+  // Return basic metrics snapshot
+  const { count: sent } = await admin.from('email_sends').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'sent')
+  const { count: queued } = await admin.from('email_sends').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'queued')
+
+  return new Response(JSON.stringify({ ok: true, sent: sent || 0, queued: queued || 0, opened: 0, replied: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+import 'server-only'
 import { createAdminClient } from '@/lib/supabase'
 import { getUserWithSubscription } from '@/lib/getUserWithSubscription'
 import { recordUsage } from '@/lib/usage'

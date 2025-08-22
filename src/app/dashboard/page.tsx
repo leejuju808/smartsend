@@ -9,12 +9,21 @@ import {
   Target,
   Package,
   MessageSquare,
-  Rocket
+  Rocket,
+  MailOpen,
+  Reply,
+  SendHorizonal
 } from 'lucide-react'
 import { generateColdEmails, EmailGenerationParams } from '@/lib/openai'
 import { createClientComponentClient } from '@/lib/supabase'
 import Link from 'next/link'
 import { getUserWithSubscription } from '@/lib/getUserWithSubscription'
+import DailySendsCard from './components/DailySendsCard'
+import DemoSeedButton from './components/DemoSeedButton'
+import DashboardMetrics from './components/DashboardMetrics'
+import MonthlyUsageMeter from '@/components/MonthlyUsageMeter'
+import ContactsImporter from '@/components/ContactsImporter'
+import SuppressionManager from '@/components/SuppressionManager'
 
 export default function DashboardPage() {
   const [formData, setFormData] = useState({
@@ -28,9 +37,11 @@ export default function DashboardPage() {
   const [saved, setSaved] = useState<string | null>(null)
   const [isPro, setIsPro] = useState<boolean | null>(null)
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [demoLoading, setDemoLoading] = useState(false)
-  const [demoStats, setDemoStats] = useState<{ sent: number; opened: number; replied: number } | null>(null)
-  const [seeding, setSeeding] = useState(false)
+  const [demoMessage, setDemoMessage] = useState<string | null>(null)
+  const [metrics, setMetrics] = useState<{ sent: number; opened: number; replied: number } | null>(null)
+  const [demoDone, setDemoDone] = useState(false)
   
   const supabase = createClientComponentClient()
 
@@ -43,6 +54,7 @@ export default function DashboardPage() {
         return
       }
       setIsAuthed(true)
+      setAuthUserId(user.id)
       const { data } = await supabase
         .from('users')
         .select('subscription_status')
@@ -51,6 +63,15 @@ export default function DashboardPage() {
       setIsPro(data?.subscription_status === 'pro' || data?.subscription_status === 'active')
     }
     check()
+    ;(async () => {
+      try {
+        const res = await fetch('/api/analytics/summary', { cache: 'no-store' })
+        if (res.ok) {
+          const j = await res.json()
+          setMetrics({ sent: j.sent || 0, opened: j.opened || 0, replied: j.replied || 0 })
+        }
+      } catch {}
+    })()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,17 +139,24 @@ export default function DashboardPage() {
     })
   }
 
-  const launchDemoCampaign = async () => {
+  const handleLaunchDemo = async () => {
+    setDemoMessage(null)
+    setDemoLoading(true)
     try {
-      setSeeding(true)
       const res = await fetch('/api/demo/seed', { method: 'POST' })
-      if (!res.ok) throw new Error('Failed to seed demo campaign')
-      const j = await res.json().catch(() => ({}))
-      alert(`Demo campaign ready: ${j.leads || 0} leads, ${j.sends || 0} sends, opens ${j.opens || 0}, replies ${j.replies || 0}`)
+      if (!res.ok) throw new Error('Failed to seed demo')
+      const j = await res.json()
+      setDemoMessage(`Demo ready: ${j.leads} leads, ${j.sends} sends queued.`)
+      // Refresh metrics
+      try {
+        const r2 = await fetch('/api/analytics/summary', { cache: 'no-store' })
+        const j2 = await r2.json()
+        setMetrics({ sent: j2.sent || 0, opened: j2.opened || 0, replied: j2.replied || 0 })
+      } catch {}
     } catch (e) {
-      alert('Unable to launch demo campaign. Please try again.')
+      setDemoMessage('Could not launch demo campaign. Please try again.')
     } finally {
-      setSeeding(false)
+      setDemoLoading(false)
     }
   }
 
@@ -145,74 +173,61 @@ export default function DashboardPage() {
       <div className="p-6">
         <h1 className="text-2xl font-semibold mb-2">Upgrade required</h1>
         <p className="mb-4">You’re on the free plan. <Link href="/dashboard/billing" className="text-blue-600 underline">Upgrade to Pro</Link> to unlock all features.</p>
+        <div className="mt-6 border rounded-lg p-4 bg-white max-w-xl">
+          <div className="font-medium mb-2">Or, see SmartSend in action</div>
+          <p className="text-sm text-gray-600 mb-3">Launch a demo campaign that seeds a few leads and instant results.</p>
+          {authUserId ? (
+            <DemoSeedButton
+              userId={authUserId}
+              onDone={(m) => {
+                setDemoDone(true)
+                setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
+              }}
+            />
+          ) : null}
+          {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-8">
-      {/* Demo campaign launcher */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between">
-        <div>
-          <div className="text-sm text-gray-600">New here?</div>
-          <div className="text-base font-medium text-gray-900">Launch Demo Campaign to see metrics instantly</div>
+      <MonthlyUsageMeter />
+      {authUserId ? (
+        <DailySendsCard userId={authUserId} />
+      ) : null}
+      {/* Metrics */}
+      {authUserId ? (
+        <DashboardMetrics userId={authUserId} onZeroState={() => {}} />
+      ) : null}
+      <div className="border rounded-lg p-4 bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium">Instant Demo</div>
+            <div className="text-sm text-gray-600">Seed a demo campaign to see metrics immediately.</div>
+          </div>
+          {authUserId ? (
+            <DemoSeedButton
+              userId={authUserId}
+              onDone={(m) => {
+                setDemoDone(true)
+                setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
+              }}
+            />
+          ) : null}
         </div>
-        <button
-          disabled={demoLoading}
-          onClick={async () => {
-            try {
-              setDemoLoading(true)
-              const res = await fetch('/api/demo/launch', { method: 'POST' })
-              const j = await res.json()
-              if (j?.ok) {
-                setDemoStats({ sent: j.sent, opened: j.opened, replied: j.replied })
-                alert(`Demo campaign seeded: ${j.sent} sent, ${j.opened} opened, ${j.replied} replied`)
-              } else {
-                alert('Failed to seed demo campaign')
-              }
-            } catch (e) {
-              alert('Failed to seed demo campaign')
-            } finally {
-              setDemoLoading(false)
-            }
-          }}
-          className="inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
-        >
-          {demoLoading ? (
-            <>
-              <Loader2 className="animate-spin h-4 w-4 mr-2" />
-              Seeding...
-            </>
-          ) : (
-            <>
-              <Rocket className="h-4 w-4 mr-2" />
-              Launch Demo Campaign
-            </>
-          )}
-        </button>
+        {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <ContactsImporter />
+        <SuppressionManager />
       </div>
 
-      {demoStats && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="text-sm text-gray-600 mb-1">Demo metrics</div>
-          <div className="text-sm">Sent: {demoStats.sent} · Opened: {demoStats.opened} · Replied: {demoStats.replied}</div>
-        </div>
-      )}
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Generate Cold Emails</h1>
-        <p className="mt-2 text-gray-600">
-          Create compelling cold emails tailored to your target audience
-        </p>
-        <div className="mt-4">
-          <button
-            onClick={launchDemoCampaign}
-            disabled={seeding}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-md text-sm"
-          >
-            {seeding ? 'Launching Demo…' : 'Launch Demo Campaign'}
-          </button>
-        </div>
+        <p className="mt-2 text-gray-600">Create compelling cold emails tailored to your target audience</p>
       </div>
 
       {/* Form */}

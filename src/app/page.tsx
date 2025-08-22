@@ -1,103 +1,201 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { ArrowRight, Mail, Zap, Shield, Users, CheckCircle, Sparkles, Rocket } from 'lucide-react'
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen">
+      {/* Navigation */}
+      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <Mail className="h-8 w-8 text-blue-600" />
+              <span className="ml-2 text-xl font-bold text-gray-900">SmartSend</span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Link 
+                href="/login" 
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Sign In
+              </Link>
+              <Link 
+                href="/signup" 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1 className="text-4xl sm:text-6xl font-bold text-gray-900 mb-6">
+            Generate Compelling
+            <span className="text-blue-600"> Cold Emails</span>
+            <br />
+            with AI
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+            Transform your outreach with personalized, professional cold emails generated by AI. 
+            Save hours of writing and boost your response rates.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link 
+              href="/signup" 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold flex items-center justify-center"
+            >
+              Start Free Trial
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+            <Link 
+              href="#features" 
+              className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-8 py-4 rounded-lg text-lg font-semibold"
+            >
+              Learn More
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Why Choose SmartSend?
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Everything you need to create high-converting cold emails in minutes
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Zap className="h-8 w-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Generation</h3>
+              <p className="text-gray-600">
+                Get 3 unique email drafts tailored to your audience and tone in seconds
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Personalized Content</h3>
+              <p className="text-gray-600">
+                Target specific industries and roles with relevant messaging
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="h-8 w-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Professional Quality</h3>
+              <p className="text-gray-600">
+                Avoid spam filters with expertly crafted, engaging content
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section (Early-adopter) */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="text-center mb-8">
+            <h3 className="text-3xl font-bold">Simple, early-adopter pricing</h3>
+            <p className="mt-2 text-slate-600">Start for $1. If your reply rate doesn’t improve in 14 days, you don’t pay.</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="rounded-2xl bg-white border border-slate-200">
+              <div className="p-6">
+                <div className="text-sm text-slate-500">Free</div>
+                <div className="mt-2 text-4xl font-bold">$0</div>
+                <ul className="mt-4 space-y-2 text-sm text-slate-600">
+                  <li>• 1 sending identity</li>
+                  <li>• 100 emails/month</li>
+                  <li>• Basic templates</li>
+                </ul>
+                <Link href="/signup" className="mt-6 w-full inline-flex items-center justify-center rounded-2xl bg-gray-900 text-white py-3 font-medium">
+                  Create free account
+                </Link>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white border-2 border-green-600">
+              <div className="p-6">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-green-700">Founding plan</div>
+                  <Sparkles className="h-4 w-4 text-green-700" />
+                </div>
+                <div className="mt-2 text-4xl font-bold">$49<span className="text-base font-normal text-slate-500">/mo</span></div>
+                <ul className="mt-4 space-y-2 text-sm text-slate-600">
+                  <li>• Up to 3 sending identities</li>
+                  <li>• Warmup & domain checks</li>
+                  <li>• AI first lines & subjects</li>
+                  <li>• Bounce/complaint guards</li>
+                  <li>• Concierge onboarding</li>
+                </ul>
+                <Link href="/dashboard/billing" className="mt-6 w-full inline-flex items-center justify-center rounded-2xl bg-green-600 text-white py-3 font-semibold">
+                  Start for $1
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="mx-auto max-w-5xl px-4 pb-20">
+        <div className="grid md:grid-cols-2 gap-6">
+          {faqs.map((f, i) => (
+            <div key={i} className="rounded-2xl bg-white border border-slate-200">
+              <div className="p-6">
+                <div className="font-semibold">{f.q}</div>
+                <div className="mt-2 text-slate-600 text-sm">{f.a}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t">
+        <div className="mx-auto max-w-7xl px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600">
+          <div className="flex items-center gap-2"><Rocket className="h-4 w-4" /> SmartSendAI</div>
+          <div className="flex items-center gap-4">
+            <a href="/terms" className="hover:text-slate-900">Terms</a>
+            <a href="/privacy" className="hover:text-slate-900">Privacy</a>
+            <a href="mailto:support@smartsendai.org" className="hover:text-slate-900">support@smartsendai.org</a>
+          </div>
+        </div>
       </footer>
     </div>
-  );
+  )
 }
+
+const faqs = [
+  {
+    q: 'Can I really start for $1?',
+    a: 'Yes. We charge $1 to validate cards and reduce fraud. If your reply rate doesn’t improve in 14 days, you don’t pay.'
+  },
+  {
+    q: 'What happens after the trial?',
+    a: 'You’ll roll into the Founding plan at $49/mo unless you cancel. You can cancel anytime from the billing page.'
+  },
+  {
+    q: 'Do you store my emails?',
+    a: 'We store generated emails tied to your account so you can revisit and edit them later.'
+  },
+  {
+    q: 'Can I change plans later?',
+    a: 'Yes. You can upgrade, downgrade, or cancel anytime. Billing changes take effect immediately.'
+  }
+]

@@ -1,0 +1,4 @@
+email,name,company,custom1,custom2,custom3
+alice@example.com,Alice Johnson,Acme Co,tagA,west,priority
+bob@example.com,Bob Smith,Northstar,tagB,east,
+carol@example.com,Carol Patel,Orbit42,,,
