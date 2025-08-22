@@ -112,3 +112,42 @@ export async function fetchRecentInbound(owner: string) {
   return out;
 }
 
+
+// New: fetch inbound with body content for inbox ingestion
+export async function fetchRecentInboundWithBody(owner: string) {
+  const { gmail } = await gmailClientForOwner(owner);
+  const newerThanDays = 7;
+  const q = `in:inbox -from:me newer_than:${newerThanDays}d`;
+
+  const res = await gmail.users.messages.list({ userId: "me", q, maxResults: 200 });
+  const ids = (res.data.messages || []).map((m) => m.id!).slice(0, 200);
+
+  function decodeBase64Url(input?: string | null): string {
+    if (!input) return "";
+    const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
+    try { return Buffer.from(b64, "base64").toString("utf8"); } catch { return ""; }
+  }
+
+  function extractBody(payload: any): { text: string; html: string } {
+    let text = "";
+    let html = "";
+    function walk(p: any) {
+      if (!p) return;
+      if (p.mimeType === "text/plain" && p.body?.data) text += decodeBase64Url(p.body.data);
+      else if (p.mimeType === "text/html" && p.body?.data) html += decodeBase64Url(p.body.data);
+      if (Array.isArray(p.parts)) for (const part of p.parts) walk(part);
+    }
+    walk(payload);
+    return { text: text.trim(), html: html.trim() };
+  }
+
+  const out: Array<{ id: string; headers: Record<string, string>; bodyText: string; bodyHtml?: string }> = [];
+  for (const id of ids) {
+    const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+    const headers = Object.fromEntries((msg.data.payload?.headers || []).map((h) => [String(h.name), String(h.value)]));
+    const { text, html } = extractBody(msg.data.payload);
+    out.push({ id, headers: headers as any, bodyText: text || (html ? html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : ""), bodyHtml: html });
+  }
+  return out;
+}
+

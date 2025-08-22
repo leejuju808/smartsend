@@ -60,9 +60,17 @@ SmartSend is a micro-SaaS web application that uses OpenAI to generate compellin
    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
    STRIPE_SECRET_KEY=your_stripe_secret_key
    STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+   # Optional: bundled plan price IDs (Starter/Team/Pro)
+   NEXT_PUBLIC_STRIPE_PRICE_STARTER=price_starter
+   NEXT_PUBLIC_STRIPE_PRICE_TEAM=price_team
+   NEXT_PUBLIC_STRIPE_PRICE_PRO=price_pro
+   # Optional: base+seat pricing (fallback)
+   STRIPE_BASE_PRICE_ID=price_base
+   STRIPE_SEAT_PRICE_ID=price_seat
 
    # App Configuration
    NEXT_PUBLIC_APP_URL=http://localhost:3000
+   NEXT_PUBLIC_SITE_URL=http://localhost:3000
    ```
 
 4. **Set up Supabase Database**

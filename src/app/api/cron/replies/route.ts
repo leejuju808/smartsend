@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/server/supabase";
-import { fetchRecentInbound } from "@/server/gmail";
+import { fetchRecentInboundWithBody } from "@/server/gmail";
 
 function auth(req: Request) {
   const key = new URL(req.url).searchParams.get("key");
@@ -29,9 +29,9 @@ export async function POST(req: Request) {
 
   for (const owner of owners) {
     try {
-      const inbound = await fetchRecentInbound(owner);
+      const inbound = await fetchRecentInboundWithBody(owner);
       for (const m of inbound) {
-        const threadIds = extractThreadIds(m.headers);
+        const threadIds = extractThreadIds(m.headers as any);
         if (!threadIds.length) continue;
 
         const { data: sent, error: sentErr } = await supabaseAdmin
@@ -78,6 +78,60 @@ export async function POST(req: Request) {
             .from("send_events")
             .insert({ owner, lead_id: (s as any).lead_id, sequence_id: (s as any).sequence_id, kind: "replied" })
             .catch(() => {});
+
+          // Inbox ingestion
+          // Lookup workspace from lead or membership
+          let workspaceId: string | null = null;
+          try {
+            const { data: mem } = await supabaseAdmin
+              .from("workspace_members")
+              .select("workspace_id")
+              .eq("user_id", owner)
+              .limit(1)
+              .maybeSingle();
+            workspaceId = (mem as any)?.workspace_id || null;
+          } catch {}
+          // Find contact by from email
+          const fromEmail = String((m.headers as any)["From"] || "").replace(/^.*<([^>]+)>.*$/i, "$1").trim();
+          let contactId: string | null = null;
+          if (fromEmail && workspaceId) {
+            const { data: c } = await supabaseAdmin
+              .from("contacts")
+              .select("id")
+              .eq("workspace_id", workspaceId)
+              .eq("email", fromEmail)
+              .maybeSingle();
+            contactId = (c as any)?.id || null;
+          }
+          const subject = String((m.headers as any)["Subject"] || "").slice(0, 500);
+          if (workspaceId) {
+            const { data: threadRow } = await supabaseAdmin
+              .from("inbox_threads")
+              .upsert({
+                workspace_id: workspaceId,
+                contact_id: contactId,
+                subject,
+                last_message_at: new Date().toISOString(),
+              } as any, { onConflict: "workspace_id,contact_id,subject" })
+              .select("id")
+              .maybeSingle();
+            const threadId = (threadRow as any)?.id;
+            if (threadId) {
+              await supabaseAdmin
+                .from("inbox_messages")
+                .insert({
+                  thread_id: threadId,
+                  sender: fromEmail || "unknown",
+                  body: m.bodyText || "",
+                  sent_at: new Date().toISOString(),
+                  is_incoming: true,
+                });
+              await supabaseAdmin
+                .from("inbox_threads")
+                .update({ last_message_at: new Date().toISOString(), status: "open" })
+                .eq("id", threadId);
+            }
+          }
 
           totalReplies++;
         }

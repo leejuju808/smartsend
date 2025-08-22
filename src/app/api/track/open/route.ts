@@ -10,11 +10,14 @@ function pixel() {
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
+  const cc = url.searchParams.get('cc') || undefined
   const messageId = url.searchParams.get('mid') || undefined
   const userId = url.searchParams.get('uid') || undefined
   try {
-    if (userId && messageId) {
-      const sb = createAdminClient()
+    const sb = createAdminClient()
+    if (cc) {
+      await sb.from('email_opens').insert({ campaign_contact_id: cc })
+    } else if (userId && messageId) {
       await sb.from('analytics_events').insert({ name: 'email_opened', user_id: userId, context: { messageId } })
     }
   } catch {}

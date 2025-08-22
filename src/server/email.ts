@@ -67,10 +67,39 @@ async function buildTransportSMTP(mb: any) {
 
 export async function sendEmail({ owner, to, subject, html, headers }: SendArgs) {
   const mb = await getMailbox(owner);
-  const transport =
-    mb.provider === "gmail"
-      ? await buildTransportGmail(mb)
-      : await buildTransportSMTP(mb);
+  if (mb.provider === 'outlook') {
+    // Send via Microsoft Graph if Outlook connected (requires connected_accounts)
+    const { data: acct } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('*')
+      .eq('user_id', owner)
+      .eq('provider', 'outlook')
+      .maybeSingle()
+    if (!acct) throw new Error('Outlook not connected')
+
+    const body = {
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: html },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: true,
+    }
+    const resp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${acct.access_token}` },
+      body: JSON.stringify(body),
+    })
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Graph send failed: ${text}`)
+    }
+    return { messageId: 'graph:sent' }
+  }
+
+  const transport = mb.provider === "gmail"
+    ? await buildTransportGmail(mb)
+    : await buildTransportSMTP(mb);
 
   const fromName = mb.from_name ? `"${mb.from_name}" ` : "";
   const info = await transport.sendMail({

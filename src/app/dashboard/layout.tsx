@@ -13,11 +13,17 @@ import {
   Zap,
   History,
   CreditCard,
-  Gift
+  Gift,
+  BarChart3,
+  KanbanSquare,
+  Users,
+  Activity
 } from 'lucide-react'
 import { createClientComponentClient } from '@/lib/supabase'
+import { canManageBilling } from '@/utils/permissions'
 import FeedbackWidget from '@/components/FeedbackWidget'
 import UpgradeNudgeModal from '@/components/billing/UpgradeNudgeModal'
+import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
 
 export default function DashboardLayout({
   children,
@@ -29,6 +35,7 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true)
   const [quiet, setQuiet] = useState(false)
   const [ready, setReady] = useState(false)
+  const [myRole, setMyRole] = useState<string | null>(null)
   
   const supabase = createClientComponentClient()
   const router = useRouter()
@@ -46,6 +53,20 @@ export default function DashboardLayout({
           .eq('user_id', user.id)
           .maybeSingle()
         if (data && data.connected_mailbox && data.imported_leads && data.launched_sequence) setReady(true)
+
+        // Load role for active workspace (if any)
+        try {
+          const active = localStorage.getItem('active_workspace')
+          if (active) {
+            const { data: m } = await supabase
+              .from('workspace_members')
+              .select('role')
+              .eq('workspace_id', active)
+              .eq('user_id', user.id)
+              .maybeSingle()
+            setMyRole((m as any)?.role ?? null)
+          }
+        } catch {}
       }
       setLoading(false)
     }
@@ -97,6 +118,13 @@ export default function DashboardLayout({
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
             <Link
+              href="/dashboard/overview"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <BarChart3 className="mr-3 h-5 w-5" />
+              Overview
+            </Link>
+            <Link
               href="/dashboard"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-100"
             >
@@ -124,13 +152,15 @@ export default function DashboardLayout({
               <User className="mr-3 h-5 w-5" />
               Account
             </Link>
-            <Link
-              href="/dashboard/billing"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <CreditCard className="mr-3 h-5 w-5" />
-              Billing
-            </Link>
+            {canManageBilling(myRole) && (
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+              >
+                <CreditCard className="mr-3 h-5 w-5" />
+                Billing
+              </Link>
+            )}
             <Link
               href="/dashboard/referrals"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
@@ -151,6 +181,20 @@ export default function DashboardLayout({
             >
               <History className="mr-3 h-5 w-5" />
               Campaigns
+            </Link>
+            <Link
+              href="/dashboard/pipeline"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <KanbanSquare className="mr-3 h-5 w-5" />
+              Pipeline
+            </Link>
+            <Link
+              href="/dashboard/team"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Users className="mr-3 h-5 w-5" />
+              Team
             </Link>
           </nav>
           <div className="border-t border-gray-200 p-4">
@@ -186,6 +230,14 @@ export default function DashboardLayout({
             <span className="ml-2 text-xl font-bold text-gray-900">SmartSend</span>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
+            <WorkspaceSwitcher />
+            <Link
+              href="/dashboard/overview"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <BarChart3 className="mr-3 h-5 w-5" />
+              Overview
+            </Link>
             <Link
               href="/dashboard"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-100"
@@ -207,13 +259,15 @@ export default function DashboardLayout({
               <History className="mr-3 h-5 w-5" />
               Logs
             </Link>
-            <Link
-              href="/dashboard/billing"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <CreditCard className="mr-3 h-5 w-5" />
-              Billing
-            </Link>
+            {canManageBilling(myRole) && (
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+              >
+                <CreditCard className="mr-3 h-5 w-5" />
+                Billing
+              </Link>
+            )}
             <Link
               href="/dashboard/referrals"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
@@ -234,6 +288,20 @@ export default function DashboardLayout({
             >
               <Settings className="mr-3 h-5 w-5" />
               Campaigns
+            </Link>
+            <Link
+              href="/dashboard/pipeline"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <KanbanSquare className="mr-3 h-5 w-5" />
+              Pipeline
+            </Link>
+            <Link
+              href="/dashboard/team"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Users className="mr-3 h-5 w-5" />
+              Team
             </Link>
           </nav>
           <div className="border-t border-gray-200 p-4">
@@ -270,6 +338,9 @@ export default function DashboardLayout({
           >
             <Menu className="h-6 w-6" />
           </button>
+          <div className="hidden lg:block w-64">
+            <WorkspaceSwitcher />
+          </div>
           {ready && (
             <span className="ml-auto text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Ready to Launch ✅</span>
           )}

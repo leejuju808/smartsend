@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const userId = getUserId(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { name } = await req.json().catch(() => ({}));
+  const { name, teamId } = await req.json().catch(() => ({}));
   if (!name) return NextResponse.json({ error: "Missing name" }, { status: 400 });
 
   const { data: prof } = await supabaseAdmin
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("sequences")
-    .insert({ owner: userId, name, status: "draft" })
+    .insert({ owner: userId, name, status: "draft", team_id: teamId || null })
     .select("id,name,status,created_at")
     .single();
 

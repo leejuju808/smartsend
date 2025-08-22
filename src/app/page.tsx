@@ -1,228 +1,86 @@
 import Link from 'next/link'
-import { ArrowRight, Mail, Zap, Shield, Users, CheckCircle, Sparkles, Rocket } from 'lucide-react'
 
-export default function HomePage() {
+export default function Home() {
   return (
-    <div className="min-h-screen">
-      {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Mail className="h-8 w-8 text-blue-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">SmartSend</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link 
-                href="/login" 
-                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Sign In
-              </Link>
-              <Link 
-                href="/signup" 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                Get Started
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-
+    <main className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex flex-col">
       {/* Hero Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto text-center">
-          <h1 className="text-4xl sm:text-6xl font-bold text-gray-900 mb-6">
-            Cold email automation
-            <span className="text-blue-600"> that books more meetings</span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            SmartSendAI writes, schedules, and monitors cold outreach for you — book more
-            meetings and save hours each week.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link 
-              href="/signup" 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold flex items-center justify-center"
-            >
-              Get Started Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-            <Link 
-              href="#features" 
-              className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-8 py-4 rounded-lg text-lg font-semibold"
-            >
-              Learn More
-            </Link>
-          </div>
+      <section className="flex flex-col items-center justify-center text-center py-24 px-6">
+        <h1 className="text-5xl font-extrabold tracking-tight text-gray-900 sm:text-6xl">
+          SmartSendAI
+        </h1>
+        <p className="mt-6 max-w-2xl text-lg text-gray-600">
+          Automate your cold email outreach, book more meetings, and grow revenue —
+          all in one simple dashboard.
+        </p>
+        <div className="mt-8 flex gap-4">
+          <Link
+            href="/signup"
+            className="px-6 py-3 rounded-xl bg-black text-white text-lg font-semibold shadow hover:opacity-90 transition"
+          >
+            Get Started Free
+          </Link>
+          <Link
+            href="/pricing"
+            className="px-6 py-3 rounded-xl border border-gray-300 text-lg font-semibold hover:bg-gray-100 transition"
+          >
+            See Pricing
+          </Link>
         </div>
       </section>
 
-      {/* Trust Signals */}
-      <section className="py-6">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center text-sm text-slate-500 mb-4">Trusted by founders and sales teams at</div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-6 items-center opacity-70">
-            <img src="/globe.svg" alt="Logo" className="h-6 mx-auto" />
-            <img src="/file.svg" alt="Logo" className="h-6 mx-auto" />
-            <img src="/globe.svg" alt="Logo" className="h-6 mx-auto" />
-            <img src="/file.svg" alt="Logo" className="h-6 mx-auto" />
-            <img src="/globe.svg" alt="Logo" className="h-6 mx-auto" />
-            <img src="/file.svg" alt="Logo" className="h-6 mx-auto" />
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Why Choose SmartSend?
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Everything you need to create high-converting cold emails in minutes
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Zap className="h-8 w-8 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Generation</h3>
-              <p className="text-gray-600">
-                Get 3 unique email drafts tailored to your audience and tone in seconds
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Personalized Content</h3>
-              <p className="text-gray-600">
-                Target specific industries and roles with relevant messaging
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="h-8 w-8 text-purple-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Professional Quality</h3>
-              <p className="text-gray-600">
-                Avoid spam filters with expertly crafted, engaging content
-              </p>
-            </div>
-          </div>
+      {/* Trust Section */}
+      <section className="py-12 px-6 bg-white text-center">
+        <p className="text-gray-500 uppercase tracking-wide text-sm font-medium">
+          Trusted by growing teams
+        </p>
+        <div className="mt-6 flex justify-center gap-8 text-gray-400">
+          <span className="text-xl font-bold">🚀 StartupOne</span>
+          <span className="text-xl font-bold">📈 GrowthCo</span>
+          <span className="text-xl font-bold">🤖 AI Labs</span>
         </div>
       </section>
 
       {/* Pricing Section */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-5xl mx-auto px-4">
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold">Straightforward pricing</h3>
-            <p className="mt-2 text-slate-600">Start free. Upgrade when you’re ready.</p>
+      <section className="py-24 px-6 bg-gray-50" id="pricing">
+        <h2 className="text-3xl font-bold text-center text-gray-900">
+          Simple Pricing
+        </h2>
+        <p className="mt-4 text-center text-gray-600">
+          Start free, upgrade when you’re ready to scale.
+        </p>
+        <div className="mt-12 flex flex-col sm:flex-row justify-center gap-8">
+          {/* Free Plan */}
+          <div className="w-full sm:w-80 border rounded-2xl p-6 bg-white shadow hover:shadow-lg transition">
+            <h3 className="text-xl font-semibold">Free</h3>
+            <p className="mt-2 text-gray-600">For testing & getting started</p>
+            <p className="mt-6 text-4xl font-bold">$0</p>
+            <Link
+              href="/signup"
+              className="mt-6 block px-6 py-3 rounded-xl bg-black text-white font-semibold text-center hover:opacity-90"
+            >
+              Get Started
+            </Link>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="rounded-2xl bg-white border border-slate-200">
-              <div className="p-6">
-                <div className="text-sm text-slate-500">Free</div>
-                <div className="mt-2 text-4xl font-bold">$0</div>
-                <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                  <li>• 1 sending identity</li>
-                  <li>• 100 emails/month</li>
-                  <li>• Basic templates</li>
-                </ul>
-                <Link href="/signup" className="mt-6 w-full inline-flex items-center justify-center rounded-2xl bg-gray-900 text-white py-3 font-medium">
-                  Get Started Free
-                </Link>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-white border-2 border-green-600">
-              <div className="p-6">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-green-700">Pro — Monthly</div>
-                  <Sparkles className="h-4 w-4 text-green-700" />
-                </div>
-                <div className="mt-2 text-4xl font-bold">$49<span className="text-base font-normal text-slate-500">/mo</span></div>
-                <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                  <li>• Up to 3 sending identities</li>
-                  <li>• Warmup & domain checks</li>
-                  <li>• AI first lines & subjects</li>
-                  <li>• Bounce/complaint guards</li>
-                  <li>• Concierge onboarding</li>
-                </ul>
-                <Link href="/dashboard/billing" className="mt-6 w-full inline-flex items-center justify-center rounded-2xl bg-green-600 text-white py-3 font-semibold">
-                  Upgrade
-                </Link>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-white border border-slate-200">
-              <div className="p-6">
-                <div className="text-sm text-slate-500">Pro — Annual</div>
-                <div className="mt-2 text-4xl font-bold">$39<span className="text-base font-normal text-slate-500">/mo</span></div>
-                <div className="text-xs text-slate-500">Billed annually at $468</div>
-                <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                  <li>• Everything in Pro Monthly</li>
-                  <li>• Priority support</li>
-                </ul>
-                <Link href="/dashboard/billing" className="mt-6 w-full inline-flex items-center justify-center rounded-2xl bg-gray-900 text-white py-3 font-medium">
-                  Upgrade annually
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* FAQ */}
-      <section id="faq" className="mx-auto max-w-5xl px-4 pb-20">
-        <div className="grid md:grid-cols-2 gap-6">
-          {faqs.map((f, i) => (
-            <div key={i} className="rounded-2xl bg-white border border-slate-200">
-              <div className="p-6">
-                <div className="font-semibold">{f.q}</div>
-                <div className="mt-2 text-slate-600 text-sm">{f.a}</div>
-              </div>
-            </div>
-          ))}
+          {/* Pro Plan */}
+          <div className="w-full sm:w-80 border-2 border-black rounded-2xl p-6 bg-white shadow-xl">
+            <h3 className="text-xl font-semibold">Pro</h3>
+            <p className="mt-2 text-gray-600">For teams ready to grow</p>
+            <p className="mt-6 text-4xl font-bold">$29<span className="text-lg">/mo</span></p>
+            <Link
+              href="/signup"
+              className="mt-6 block px-6 py-3 rounded-xl bg-black text-white font-semibold text-center hover:opacity-90"
+            >
+              Upgrade to Pro
+            </Link>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t">
-        <div className="mx-auto max-w-7xl px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600">
-          <div className="flex items-center gap-2"><Rocket className="h-4 w-4" /> SmartSendAI</div>
-          <div className="flex items-center gap-4">
-            <a href="/terms" className="hover:text-slate-900">Terms</a>
-            <a href="/privacy" className="hover:text-slate-900">Privacy</a>
-            <a href="mailto:support@smartsendai.org" className="hover:text-slate-900">support@smartsendai.org</a>
-          </div>
-        </div>
+      <footer className="py-12 text-center text-gray-500 text-sm">
+        © {new Date().getFullYear()} SmartSendAI. All rights reserved.
       </footer>
-    </div>
+    </main>
   )
 }
-
-const faqs = [
-  {
-    q: 'Can I really start for $1?',
-    a: 'Yes. We charge $1 to validate cards and reduce fraud. If your reply rate doesn’t improve in 14 days, you don’t pay.'
-  },
-  {
-    q: 'What happens after the trial?',
-    a: 'You’ll roll into the Founding plan at $49/mo unless you cancel. You can cancel anytime from the billing page.'
-  },
-  {
-    q: 'Do you store my emails?',
-    a: 'We store generated emails tied to your account so you can revisit and edit them later.'
-  },
-  {
-    q: 'Can I change plans later?',
-    a: 'Yes. You can upgrade, downgrade, or cancel anytime. Billing changes take effect immediately.'
-  }
-]

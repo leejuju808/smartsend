@@ -11,6 +11,27 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = createRouteHandlerClient({ cookies })
     await supabase.auth.exchangeCodeForSession(code)
+    // Ensure personal workspace exists and membership is created
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.id) {
+        const admin = createAdminClient()
+        // If user not a member anywhere, create a personal workspace and add as owner
+        const { count } = await admin.from('workspace_members').select('*', { count: 'exact', head: true }).eq('user_id', user.id)
+        if (!count || count === 0) {
+          const { data: ws } = await admin
+            .from('workspaces')
+            .insert({ name: `${user.email ?? 'Personal'} Workspace`, owner_id: user.id })
+            .select('*')
+            .single()
+          if ((ws as any)?.id) {
+            await admin
+              .from('workspace_members')
+              .insert({ workspace_id: (ws as any).id, user_id: user.id, role: 'owner' })
+          }
+        }
+      }
+    } catch {}
     // Associate referral if cookie (ss_ref) or ref param present
     try {
       const jar = cookies()
@@ -40,5 +61,5 @@ export async function GET(request: NextRequest) {
   }
 
   // URL to redirect to after sign in process completes
-  return NextResponse.redirect(new URL('/getting-started', request.url))
+  return NextResponse.redirect(new URL('/dashboard', request.url))
 } 

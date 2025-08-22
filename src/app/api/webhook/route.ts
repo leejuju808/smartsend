@@ -152,15 +152,54 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const customerId = session.customer as string | undefined;
-        const metaUserId = session.metadata?.user_id as string | undefined;
-        let userId: string | null = null;
-        if (metaUserId) userId = metaUserId;
-        else if (customerId) userId = await findUserIdByCustomerId(customerId);
-        if (userId) {
-          if (customerId) {
-            await supabaseAdmin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
+        const workspaceId = session.metadata?.workspace_id as string | undefined;
+        const seatsMeta = session.metadata?.seat_count as string | undefined;
+        const explicitPriceId = session.metadata?.price_id as string | undefined;
+        const seatCount = seatsMeta ? Math.max(1, Number(seatsMeta)) : undefined;
+
+        if (workspaceId && customerId) {
+          // Determine seat limit by plan if provided, otherwise from seatCount metadata
+          let seatLimit: number | undefined = undefined;
+          try {
+            // If using bundled plans Starter/Team/Pro (single priceId)
+            const planSeatMap: Record<string, number> = {
+              [process.env.STRIPE_PRICE_STARTER as string]: 1,
+              [process.env.STRIPE_PRICE_TEAM as string]: 5,
+              [process.env.STRIPE_PRICE_PRO as string]: 20,
+            } as Record<string, number>;
+
+            let priceId = explicitPriceId;
+            if (!priceId && session.subscription) {
+              const StripeModule = await import("stripe");
+              const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2024-06-20" });
+              const sub = await s.subscriptions.retrieve(session.subscription as string);
+              priceId = sub.items.data[0]?.price?.id;
+            }
+            if (priceId && planSeatMap[priceId]) seatLimit = planSeatMap[priceId];
+          } catch {}
+
+          if (seatLimit == null && seatCount != null) seatLimit = seatCount;
+
+          await supabaseAdmin
+            .from("workspaces")
+            .update({
+              subscription_status: "pro",
+              stripe_customer_id: customerId,
+              stripe_subscription_id: session.subscription as string,
+              ...(seatLimit != null ? { seat_limit: seatLimit } : {}),
+            } as any)
+            .eq("id", workspaceId);
+        } else {
+          const metaUserId = session.metadata?.user_id as string | undefined;
+          let userId: string | null = null;
+          if (metaUserId) userId = metaUserId;
+          else if (customerId) userId = await findUserIdByCustomerId(customerId);
+          if (userId) {
+            if (customerId) {
+              await supabaseAdmin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
+            }
+            await updateSubscriptionStatus(userId, "pro");
           }
-          await updateSubscriptionStatus(userId, "pro");
         }
         break;
       }
@@ -168,33 +207,47 @@ export async function POST(req: Request) {
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const sub = event.data.object;
-        const userId = await findUserIdByCustomerId(sub.customer);
-        if (userId) {
-          const internal = mapStripeToInternal(sub.status);
-          await updateSubscriptionStatus(userId, internal);
-          if (internal === "pro") {
-            const { data: refRows } = await supabaseAdmin
-              .from("referrals")
-              .select("id, inviter, status")
-              .eq("invitee", userId)
-              .order("created_at", { ascending: false })
-              .limit(1);
-            const refRow = refRows && refRows[0];
-            if (refRow && refRow.status !== "converted") {
-              await supabaseAdmin.from("referrals").update({ status: "converted" }).eq("id", refRow.id);
-              const inviterId = (refRow as any).inviter as string | undefined;
-              if (inviterId) {
-                const { data: prof } = await supabaseAdmin
-                  .from("profiles")
-                  .select("bonus_credit")
-                  .eq("id", inviterId)
-                  .maybeSingle();
-                const current = (prof as any)?.bonus_credit ?? 0;
-                await supabaseAdmin
-                  .from("profiles")
-                  .update({ bonus_credit: current + 1 })
-                  .eq("id", inviterId)
-                  .catch(() => {});
+        const internal = mapStripeToInternal(sub.status);
+
+        // First, attempt workspace lookup by customer id
+        const { data: ws } = await supabaseAdmin
+          .from("workspaces")
+          .select("id")
+          .eq("stripe_customer_id", sub.customer as string)
+          .maybeSingle();
+        if (ws) {
+          await supabaseAdmin
+            .from("workspaces")
+            .update({ subscription_status: internal, stripe_subscription_id: sub.id as string })
+            .eq("id", ws.id);
+        } else {
+          const userId = await findUserIdByCustomerId(sub.customer);
+          if (userId) {
+            await updateSubscriptionStatus(userId, internal);
+            if (internal === "pro") {
+              const { data: refRows } = await supabaseAdmin
+                .from("referrals")
+                .select("id, inviter, status")
+                .eq("invitee", userId)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              const refRow = refRows && refRows[0];
+              if (refRow && refRow.status !== "converted") {
+                await supabaseAdmin.from("referrals").update({ status: "converted" }).eq("id", refRow.id);
+                const inviterId = (refRow as any).inviter as string | undefined;
+                if (inviterId) {
+                  const { data: prof } = await supabaseAdmin
+                    .from("profiles")
+                    .select("bonus_credit")
+                    .eq("id", inviterId)
+                    .maybeSingle();
+                  const current = (prof as any)?.bonus_credit ?? 0;
+                  await supabaseAdmin
+                    .from("profiles")
+                    .update({ bonus_credit: current + 1 })
+                    .eq("id", inviterId)
+                    .catch(() => {});
+                }
               }
             }
           }

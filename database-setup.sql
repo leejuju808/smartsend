@@ -38,9 +38,26 @@ CREATE TABLE IF NOT EXISTS public.email_templates (
   product_service TEXT NOT NULL,
   tone TEXT NOT NULL,
   generated_emails TEXT NOT NULL,
+  optimized_version TEXT,
+  performance_notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- AI Writing Assistant: Template suggestions table
+CREATE TABLE IF NOT EXISTS public.template_suggestions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  template_id UUID REFERENCES public.email_templates(id) ON DELETE CASCADE,
+  suggestion TEXT NOT NULL,
+  suggestion_type TEXT NOT NULL CHECK (suggestion_type IN ('subject', 'body', 'tone', 'personalization')),
+  ai_score INTEGER CHECK (ai_score >= 0 AND ai_score <= 100),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  accepted BOOLEAN DEFAULT FALSE
+);
+
+-- Create index for template suggestions
+CREATE INDEX IF NOT EXISTS idx_template_suggestions_template_id ON public.template_suggestions(template_id);
+CREATE INDEX IF NOT EXISTS idx_template_suggestions_accepted ON public.template_suggestions(accepted);
 
 -- Subscriptions table
 CREATE TABLE IF NOT EXISTS public.subscriptions (
@@ -248,3 +265,22 @@ language sql stable as $$
   group by step_no
   order by step_no asc;
 $$;
+
+-- Connected accounts for Gmail/Outlook OAuth (idempotent)
+create table if not exists public.connected_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  provider text check (provider in ('gmail','outlook')),
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz default now()
+);
+
+alter table public.connected_accounts enable row level security;
+
+drop policy if exists "Users can manage own connected accounts" on public.connected_accounts;
+create policy "Users can manage own connected accounts"
+  on public.connected_accounts for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

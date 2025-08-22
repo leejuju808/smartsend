@@ -1,31 +1,53 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-const PRICE_MONTHLY = process.env.NEXT_PUBLIC_PRICE_PRO_MONTHLY!;
-const PRICE_ANNUAL = process.env.NEXT_PUBLIC_PRICE_PRO_ANNUAL!;
-const DEFAULT_TRIAL = Number(process.env.NEXT_PUBLIC_TRIAL_DAYS || 0);
+import { useEffect, useMemo, useState } from "react";
+import { createClientComponentClient } from "@/lib/supabase";
+import { canManageBilling } from "@/utils/permissions";
 
 export default function BillingPage() {
-  const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
-  const [promo, setPromo] = useState("");
-  const [trialDays, setTrialDays] = useState(DEFAULT_TRIAL);
+  const supabase = createClientComponentClient();
+  const [workspace, setWorkspace] = useState<any | null>(null);
+  const [seatCount, setSeatCount] = useState<number>(1);
+  const [email, setEmail] = useState<string>("");
+  const [myRole, setMyRole] = useState<string | null>(null);
+  const [usedSeats, setUsedSeats] = useState<number>(0);
 
-  const copy = useMemo(() => {
-    return interval === "annual"
-      ? { title: "Pro — Annual", subtitle: "Best value (save vs monthly)" }
-      : { title: "Pro — Monthly", subtitle: "Flexible, cancel anytime" };
-  }, [interval]);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setEmail(user.email || "");
+      const { data } = await supabase
+        .from("workspace_members")
+        .select("role, workspace_id, workspaces(*)")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const ws = (data as any)?.workspaces || null;
+      setMyRole((data as any)?.role ?? null);
+      setWorkspace(ws);
+      if (ws?.seat_limit) setSeatCount(ws.seat_limit);
+      if (ws?.member_count != null) setUsedSeats(ws.member_count);
+    })();
+  }, [supabase]);
 
-  function upgrade() {
-    const params = new URLSearchParams();
-    params.set("interval", interval);
-    if (trialDays > 0) params.set("trialDays", String(trialDays));
-    if (promo.trim()) {
-      params.set("promo", promo.trim());
-      params.set("promo_type", "coupon");
-    }
-    window.location.href = `/api/stripe/checkout?${params.toString()}`;
+  async function handleCheckout(priceId?: string) {
+    if (!workspace) return;
+    const res = await fetch("/api/stripe/create-checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId: workspace.id, email, seatCount, priceId }),
+    });
+    const json = await res.json();
+    if (json?.url) window.location.href = json.url;
+  }
+
+  if (!canManageBilling(myRole)) {
+    return (
+      <div className="p-6 max-w-2xl">
+        <h1 className="text-2xl font-semibold mb-2">Billing</h1>
+        <p className="text-sm text-gray-600">Only workspace owners can manage billing.</p>
+      </div>
+    );
   }
 
   return (
@@ -35,42 +57,50 @@ export default function BillingPage() {
       <div className="rounded-2xl border p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-lg font-medium">{copy.title}</div>
-            <div className="text-sm text-gray-600">{copy.subtitle}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Toggle label="Monthly" active={interval === "monthly"} onClick={() => setInterval("monthly")} />
-            <Toggle label="Annual" active={interval === "annual"} onClick={() => setInterval("annual")} />
+            <div className="text-lg font-medium">Current Plan</div>
+            <div className="text-sm text-gray-600">{workspace?.subscription_status || "free"}</div>
           </div>
         </div>
+
+        <p className="text-sm">{usedSeats} of {workspace?.seat_limit ?? seatCount} seats used</p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="col-span-2">
-            <label className="text-xs text-gray-600">Promo code (optional)</label>
-            <input
-              value={promo}
-              onChange={e => setPromo(e.target.value)}
-              placeholder="EARLYBIRD, etc."
-              className="mt-1 w-full rounded-xl border p-2"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-600">Trial days</label>
+            <label className="text-xs text-gray-600">Seat count</label>
             <input
               type="number"
-              min={0}
-              max={30}
-              value={trialDays}
-              onChange={e => setTrialDays(Number(e.target.value))}
+              min={1}
+              value={seatCount}
+              onChange={e => setSeatCount(Math.max(1, Number(e.target.value)))}
               className="mt-1 w-full rounded-xl border p-2"
             />
           </div>
         </div>
 
-        <button onClick={upgrade} className="rounded-2xl bg-black px-4 py-2 text-white">
-          Upgrade to Pro
+        <button onClick={() => handleCheckout()} className="rounded-2xl bg-black px-4 py-2 text-white">
+          Upgrade / Change Seats
         </button>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <button
+            onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER as any)}
+            className="rounded-2xl border px-4 py-2"
+          >
+            Upgrade to Starter (1 seat)
+          </button>
+          <button
+            onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAM as any)}
+            className="rounded-2xl border px-4 py-2"
+          >
+            Upgrade to Team (5 seats)
+          </button>
+          <button
+            onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO as any)}
+            className="rounded-2xl border px-4 py-2"
+          >
+            Upgrade to Pro (20 seats)
+          </button>
+        </div>
 
         <p className="text-xs text-gray-500">
           You’ll be taken to a secure Stripe Checkout page to complete your subscription.
@@ -91,16 +121,5 @@ export default function BillingPage() {
         </button>
       </div>
     </div>
-  );
-}
-
-function Toggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-xl px-3 py-1 text-sm border ${active ? "bg-black text-white" : "bg-white"}`}
-    >
-      {label}
-    </button>
   );
 }

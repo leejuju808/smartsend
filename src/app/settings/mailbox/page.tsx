@@ -5,7 +5,7 @@ import { createClientComponentClient } from "@/lib/supabase";
 export default function MailboxSettingsPage() {
   const sb = createClientComponentClient();
   const [userId, setUserId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"gmail" | "smtp">("gmail");
+  const [tab, setTab] = useState<"gmail" | "outlook" | "smtp">("gmail");
   const [status, setStatus] = useState<{ provider?: string; verified?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [smtp, setSmtp] = useState({
@@ -29,6 +29,11 @@ export default function MailboxSettingsPage() {
   function connectGmail() {
     if (!userId) return;
     window.location.href = `/api/mail/gmail/start?userId=${userId}`;
+  }
+
+  function connectOutlook() {
+    if (!userId) return;
+    window.location.href = `/api/auth/start/outlook?userId=${userId}`;
   }
 
   async function saveSMTP() {
@@ -80,6 +85,9 @@ export default function MailboxSettingsPage() {
           <button className={`px-3 py-1.5 rounded-xl ${tab === "gmail" ? "bg-black text-white" : "bg-gray-100"}`} onClick={() => setTab("gmail")}>
             Gmail OAuth
           </button>
+          <button className={`px-3 py-1.5 rounded-xl ${tab === "outlook" ? "bg-black text-white" : "bg-gray-100"}`} onClick={() => setTab("outlook")}>
+            Outlook OAuth
+          </button>
           <button className={`px-3 py-1.5 rounded-xl ${tab === "smtp" ? "bg-black text-white" : "bg-gray-100"}`} onClick={() => setTab("smtp")}>
             SMTP
           </button>
@@ -90,6 +98,15 @@ export default function MailboxSettingsPage() {
             <p className="text-sm text-gray-600">Connect with Google to send via Gmail using OAuth (safer than passwords).</p>
             <button onClick={connectGmail} className="rounded-xl bg-red-600 text-white px-4 py-2 w-fit">
               Connect Google
+            </button>
+          </div>
+        )}
+
+        {tab === "outlook" && (
+          <div className="grid gap-3">
+            <p className="text-sm text-gray-600">Connect with Microsoft to send via Outlook using OAuth.</p>
+            <button onClick={connectOutlook} className="rounded-xl bg-blue-600 text-white px-4 py-2 w-fit">
+              Connect Outlook
             </button>
           </div>
         )}

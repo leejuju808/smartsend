@@ -3,7 +3,8 @@ import UsageBadge from '@/components/billing/UsageBadge'
 import { getUserSubscriptionStatus, isPro } from '@/lib/usage'
 import { getOrCreateDefaultOrgForUser, seatLimitForOrg } from '@/lib/org'
 import { createAdminClient } from '@/lib/supabase'
-import { inviteMember, removeMember } from '@/app/actions/team'
+import { removeMember } from '@/app/actions/team'
+import InviteMemberForm from '@/components/InviteMemberForm'
 import AddSeatButton from '@/components/team/AddSeatButton'
 
 export default async function AccountPage() {
@@ -101,17 +102,9 @@ export default async function AccountPage() {
           </table>
         </div>
         <div className="pt-2">
-          <form action={inviteMember} className="flex items-center gap-2">
-            <input
-              type="email"
-              name="email"
-              placeholder="teammate@company.com"
-              required
-              className="rounded-lg border px-3 py-2 text-sm w-72"
-            />
-            <button className="rounded-lg bg-black text-white text-sm px-3 py-2">Invite</button>
-          </form>
-          <p className="text-xs text-slate-500 mt-1">We’ll email them a join link. Adding teammates increases your billed seats.</p>
+          {/* @ts-expect-error Client component */}
+          <InviteMemberForm />
+          <p className="text-xs text-slate-500 mt-1">Adding teammates increases your billed seats.</p>
         </div>
       </div>
     </div>

@@ -6,9 +6,18 @@ import { monthWindow } from '@/lib/plan'
 import { getPlanInfo } from '@/lib/plan'
 
 export function getFreeDailyQuota(kind = 'default'): number {
-  const envKey = `FREE_QUOTA_${String(kind || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`
+  const envKey = `FREE_QUOTA_${String(kind || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')`
   const perKind = process.env[envKey]
   const fallback = process.env.FREE_DAILY_QUOTA ?? process.env.NEXT_PUBLIC_FREE_DAILY_QUOTA
+  
+  // Set specific quotas for AI features
+  if (kind === 'ai_optimization') {
+    return Number(process.env.FREE_QUOTA_AI_OPTIMIZATION || 3)
+  }
+  if (kind === 'ai_scoring') {
+    return Number(process.env.FREE_QUOTA_AI_SCORING || 10)
+  }
+  
   const n = Number(perKind ?? fallback ?? 5)
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5
 }

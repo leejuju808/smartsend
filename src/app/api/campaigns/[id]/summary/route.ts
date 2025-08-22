@@ -13,16 +13,17 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   const failed = (data || []).filter((r: any) => r.status === "failed").length;
   const skipped = (data || []).filter((r: any) => r.status === "skipped").length;
   const { data: camp } = await supabase.from("campaigns").select("status,total,sent,failed,skipped").eq("id", params.id).single();
+  // Distinct openers/clickers via recipient aggregates
   const { count: openCount } = await supabase
-    .from("email_events")
+    .from("campaign_recipients")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", params.id)
-    .eq("type", "open");
+    .gt("open_count", 0);
   const { count: clickCount } = await supabase
-    .from("email_events")
+    .from("campaign_recipients")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", params.id)
-    .eq("type", "click");
+    .gt("click_count", 0);
   return NextResponse.json({
     status: camp?.status,
     total: camp?.total || 0,
