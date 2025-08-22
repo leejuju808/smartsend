@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient, createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 
 // Debug environment variables
 console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -15,13 +14,13 @@ export const createClientComponentClient = () => {
   return createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
 
-// Server-side Supabase client
+// Server-side Supabase client (for route handlers and server components)
 export const createServerComponentClient = () => {
-  const cookieStore = cookies()
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name: string) {
-        return cookieStore.get(name)?.value
+        // This will be overridden in server components
+        return undefined
       },
       set() {},
       remove() {},

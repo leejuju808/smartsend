@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Imap = require("imap-simple");
@@ -9,9 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).end("Method not allowed");
-
+export async function POST(req: Request) {
   try {
     const imapConfig = {
       imap: {
@@ -85,11 +83,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     connection.end();
-    return res.status(200).json({ success: true, message: "Replies fetched" });
+    return NextResponse.json({ success: true, message: "Replies fetched" });
   } catch (err: any) {
     // eslint-disable-next-line no-console
     console.error("Reply fetch error:", err?.message || err);
-    return res.status(500).json({ error: err?.message || "Unknown error" });
+    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
   }
-}
-
+} 

@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { renderTemplate } from "@/lib/renderTemplate";
+import { renderTemplate, type MinimalContact } from "@/lib/renderTemplate";
+import { split, toHtml } from "@/lib/campaign-utils";
+import { Input } from "@/components/ui/Input";
 import Link from "next/link";
 
 export default function NewCampaignPage() {
@@ -14,7 +16,7 @@ export default function NewCampaignPage() {
   const [creating, setCreating] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState<number | null>(null);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<MinimalContact[]>([]);
   const [sampleIdx, setSampleIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -181,35 +183,6 @@ export default function NewCampaignPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function split(s: string): string[] { 
-  return s.split(/[,\s]+/).map(x => x.trim()).filter(Boolean); 
-}
-
-function toHtml(s: string): string { 
-  return s.replace(/\n/g, "<br/>"); 
-}
-
-interface InputProps {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}
-
-function Input({ label, value, onChange, placeholder }: InputProps) {
-  return (
-    <div>
-      <div className="text-xs text-gray-600">{label}</div>
-      <input 
-        className="mt-1 w-full rounded-xl border p-2" 
-        value={value} 
-        onChange={e => onChange(e.target.value)} 
-        placeholder={placeholder}
-      />
     </div>
   );
 }

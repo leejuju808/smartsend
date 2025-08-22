@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
@@ -14,9 +14,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
 });
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).end("Method not allowed");
-
+export async function POST(req: Request) {
   try {
     const { data: steps, error: stepsError } = await supabase
       .from("sequence_steps")
@@ -73,10 +71,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    return res.status(200).json({ success: true });
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("Follow-up send error:", err?.message || err);
-    return res.status(500).json({ error: err?.message || "Unknown error" });
+    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
   }
-}
-
+} 

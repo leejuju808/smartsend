@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,14 +8,16 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).end("Method not allowed");
-
+export async function POST(req: Request) {
   try {
-    const { workspaceId, email, seatCount, priceId } = req.body as { workspaceId: string; email: string; seatCount?: number; priceId?: string };
+    const { workspaceId, email, seatCount, priceId } = await req.json() as { workspaceId: string; email: string; seatCount?: number; priceId?: string };
 
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
-    if (!email) return res.status(400).json({ error: "email is required" });
+    if (!workspaceId) {
+      return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+    }
+    if (!email) {
+      return NextResponse.json({ error: "email is required" }, { status: 400 });
+    }
     const seats = Math.max(1, Number(seatCount || 1));
 
     const { data: ws, error: wsErr } = await supabase
@@ -23,7 +25,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id, stripe_customer_id")
       .eq("id", workspaceId)
       .single();
-    if (wsErr || !ws) throw new Error("Workspace not found");
+    if (wsErr || !ws) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
 
     let customerId: string | null = (ws as any).stripe_customer_id || null;
     if (!customerId) {
@@ -47,7 +51,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else {
       const basePrice = process.env.STRIPE_BASE_PRICE_ID!;
       const seatPrice = process.env.STRIPE_SEAT_PRICE_ID!;
-      if (!basePrice || !seatPrice) throw new Error("Missing Stripe price IDs");
+      if (!basePrice || !seatPrice) {
+        return NextResponse.json({ error: "Missing Stripe price IDs" }, { status: 500 });
+      }
 
       session = await stripe.checkout.sessions.create({
         customer: customerId!,
@@ -62,10 +68,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    return res.status(200).json({ url: session.url });
+    return NextResponse.json({ url: session.url });
   } catch (err: any) {
     console.error("Stripe error:", err?.message || err);
-    return res.status(500).json({ error: err?.message || "Internal error" });
+    return NextResponse.json({ error: err?.message || "Internal error" }, { status: 500 });
   }
-}
-
+} 
