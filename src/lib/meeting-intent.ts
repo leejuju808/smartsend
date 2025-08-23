@@ -13,3 +13,9 @@ export function hasMeetingIntent(text: string): boolean {
   return score >= 2;
 }
 
+export function wantsMeeting(text: string): boolean {
+  const s = text.toLowerCase();
+  return /\b(call|meet|meeting|zoom|teams|schedule|chat|talk)\b/.test(s) &&
+         /\b(this|next|tomorrow|week|soon|time|available|availability)\b/.test(s);
+}
+

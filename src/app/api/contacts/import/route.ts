@@ -1,363 +1,94 @@
-export const runtime = "nodejs";
-
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { parse } from "csv-parse/sync";
-import { emailDomain, isLikelyEmail, normalizeEmail } from "@/lib/email";
 
-type Row = Record<string, string>;
+type IncomingContact = {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+};
 
-function guess(headers: string[]) {
-  const H = headers.map(h => h.toLowerCase());
-  const find = (...alts: string[]) => {
-    const idx = H.findIndex(h => alts.some(a => h === a || h.includes(a)));
-    return idx >= 0 ? headers[idx] : "";
-  };
-  const email = find("email","e-mail","mail","email_address");
-  const name = find("name","full name","full_name");
-  const first = find("first","first_name","given");
-  const last = find("last","last_name","family","surname");
-  const company = find("company","org","organization");
-  const tags = find("tags","tag");
-  return { email, name, first, last, company, tags };
+function normalizeEmail(e: string | undefined): string | null {
+  if (!e) return null;
+  return e.trim().toLowerCase();
+}
+
+function getSupabaseServer() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  // Use cookies for auth (if using Supabase Auth Helpers, adapt accordingly)
+  return createClient(supabaseUrl, supabaseAnon, { global: { headers: { 'X-Client-Info': 'smartsend/import' } } });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const supabase = getSupabaseServer();
 
-    const form = await req.formData();
-    const file = form.get("file") as unknown as File | null;
-    const addTag = String(form.get("addTag") || "").trim();
+    // Get user
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    const userId = user.id;
 
-    if (!file) return NextResponse.json({ error: "file required (CSV)" }, { status: 400 });
+    const payload = await req.json();
+    const rows: IncomingContact[] = Array.isArray(payload?.rows) ? payload.rows : [];
+    if (!rows.length) {
+      return NextResponse.json({ error: "No rows" }, { status: 400 });
+    }
 
-    const buf = Buffer.from(await file.arrayBuffer());
-    const rows: Row[] = parse(buf, { columns: true, skip_empty_lines: true, bom: true });
-
-    if (!rows.length) return NextResponse.json({ inserted: 0, skipped: 0, suppressed: 0, invalid: 0, rejectsBase64: null });
-
-    const headers = Object.keys(rows[0]);
-    const map = guess(headers);
-
-    // Preload suppression set (email + domain)
-    const allEmails = new Set<string>();
-    const allDomains = new Set<string>();
+    // Client-side may have deduped already; we still dedupe here (by email)
+    const map = new Map<string, IncomingContact>();
     for (const r of rows) {
-      const raw = r[map.email] || r["email"] || r["Email"] || "";
-      const e = normalizeEmail(raw);
-      if (e) {
-        allEmails.add(e);
-        const d = emailDomain(e);
-        if (d) allDomains.add(d);
+      const email = normalizeEmail(r.email);
+      if (!email) continue;
+      if (!map.has(email)) {
+        map.set(email, {
+          email,
+          first_name: (r.first_name || "").trim() || undefined,
+          last_name: (r.last_name || "").trim() || undefined,
+          company: (r.company || "").trim() || undefined
+        });
       }
     }
+    const unique = Array.from(map.values());
+
+    // Filter out suppressed emails
+    const emails = unique.map(r => r.email);
     const { data: suppressed } = await supabase
-      .from("suppressions")
-      .select("kind, value_lower")
-      .eq("user_id", user.id)
-      .in("value_lower", [...allEmails, ...allDomains]);
+      .from("suppression_list")
+      .select("email")
+      .eq("user_id", userId)
+      .in("email", emails.map(e => e.toLowerCase()));
 
-    const supEmails = new Set((suppressed || []).filter(s => s.kind === "email").map(s => s.value_lower));
-    const supDomains = new Set((suppressed || []).filter(s => s.kind === "domain").map(s => s.value_lower));
+    const suppressedSet = new Set((suppressed || []).map(s => s.email.toLowerCase()));
+    const toInsert = unique.filter(r => !suppressedSet.has(r.email.toLowerCase()));
 
-    // Preload existing contacts to dedupe against DB
-    const { data: existing } = await supabase
-      .from("contacts")
-      .select("email_lower")
-      .eq("user_id", user.id);
-    const existingSet = new Set((existing || []).map(x => String(x.email_lower).toLowerCase()));
+    // Chunk upserts to avoid payload limits
+    const chunk = <T,>(arr: T[], size = 500) =>
+      Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, (i + 1) * size));
 
-    const toInsert: any[] = [];
-    const seenInFile = new Set<string>();
-    const rejects: any[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-
-      // Build candidate
-      const rawEmail = normalizeEmail(r[map.email] || r["email"] || r["Email"] || "");
-      const okEmail = isLikelyEmail(rawEmail);
-      if (!okEmail) {
-        rejects.push({ row: i + 2, reason: "invalid_email", email: rawEmail }); // +2 accounts for header + 1-indexed
-        continue;
-      }
-
-      // dedupe within file
-      if (seenInFile.has(rawEmail)) {
-        rejects.push({ row: i + 2, reason: "duplicate_in_file", email: rawEmail });
-        continue;
-      }
-
-      // suppression check
-      const dom = emailDomain(rawEmail);
-      if (supEmails.has(rawEmail) || (dom && supDomains.has(dom))) {
-        rejects.push({ row: i + 2, reason: "suppressed", email: rawEmail });
-        continue;
-      }
-
-      // dedupe against DB
-      if (existingSet.has(rawEmail)) {
-        rejects.push({ row: i + 2, reason: "already_exists", email: rawEmail });
-        continue;
-      }
-
-      seenInFile.add(rawEmail);
-
-      // name resolution
-      let name = (r[map.name] || "").toString().trim();
-      const first = (r[map.first] || "").toString().trim();
-      const last = (r[map.last] || "").toString().trim();
-      if (!name && (first || last)) name = `${first} ${last}`.trim();
-
-      // company/tags
-      const company = (r[map.company] || "").toString().trim() || null;
-      const tags = new Set<string>();
-      if (r[map.tags]) {
-        String(r[map.tags]).split(/[;,]/).map(s => s.trim()).filter(Boolean).forEach(t => tags.add(t));
-      }
-      if (addTag) tags.add(addTag);
-
-      // gather custom extra fields
-      const reserved = new Set([map.email, map.name, map.first, map.last, map.company, map.tags].filter(Boolean));
-      const custom: Record<string, string> = {};
-      for (const k of Object.keys(r)) {
-        if (!reserved.has(k)) {
-          const v = r[k];
-          if (v !== undefined && v !== null && String(v).trim() !== "") custom[k] = String(v);
-        }
-      }
-
-      toInsert.push({
-        user_id: user.id,
-        email: rawEmail,
-        name: name || null,
-        company,
-        tags: Array.from(tags),
-        custom: Object.keys(custom).length ? custom : null,
-      });
-    }
-
-    // Insert
     let inserted = 0;
-    if (toInsert.length) {
-      const { error } = await supabase.from("contacts").insert(toInsert);
+    for (const part of chunk(toInsert, 500)) {
+      const records = part.map(p => ({ ...p, user_id: userId }));
+      const { error } = await supabase
+        .from("contacts")
+        .upsert(records, { onConflict: "user_id,email", ignoreDuplicates: false });
       if (error) {
-        // If something fails catastrophically, mark all pending as rejects
-        for (const c of toInsert) rejects.push({ row: null, reason: "insert_failed", email: c.email });
-      } else {
-        inserted = toInsert.length;
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
+      inserted += records.length;
     }
-
-    // Build a CSV of rejects
-    let rejectsBase64: string | null = null;
-    if (rejects.length) {
-      const header = "row,email,reason\n";
-      const body = rejects.map(x => `${x.row ?? ""},${x.email ?? ""},${x.reason}`).join("\n");
-      rejectsBase64 = Buffer.from(header + body, "utf8").toString("base64");
-    }
-
-    const invalid = rejects.filter(r => r.reason === "invalid_email").length;
-    const suppressedCnt = rejects.filter(r => r.reason === "suppressed").length;
-    const skipped = rejects.length - invalid - suppressedCnt; // dupes/existing/insert_failed
 
     return NextResponse.json({
-      inserted,
-      skipped,
-      suppressed: suppressedCnt,
-      invalid,
-      total_in_file: rows.length,
-      rejectsBase64,
-      rejectsFilename: "rejected.csv",
+      ok: true,
+      received: rows.length,
+      unique: unique.length,
+      suppressed_skipped: unique.length - toInsert.length,
+      upserted: inserted
     });
   } catch (e: any) {
-    console.error(e);
-    return NextResponse.json({ error: e?.message || "Import failed" }, { status: 500 });
-  }
-}
-
-export const runtime = "nodejs";
-
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import { parse } from "csv-parse/sync";
-import { emailDomain, isLikelyEmail, normalizeEmail } from "@/lib/email";
-
-type Row = Record<string, string>;
-
-function guess(headers: string[]) {
-  const H = headers.map(h => h.toLowerCase());
-  const find = (...alts: string[]) => {
-    const idx = H.findIndex(h => alts.some(a => h === a || h.includes(a)));
-    return idx >= 0 ? headers[idx] : "";
-  };
-  const email = find("email","e-mail","mail","email_address");
-  const name = find("name","full name","full_name");
-  const first = find("first","first_name","given");
-  const last = find("last","last_name","family","surname");
-  const company = find("company","org","organization");
-  const tags = find("tags","tag");
-  return { email, name, first, last, company, tags };
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const form = await req.formData();
-    const file = form.get("file") as unknown as File | null;
-    const addTag = String(form.get("addTag") || "").trim();
-
-    if (!file) return NextResponse.json({ error: "file required (CSV)" }, { status: 400 });
-
-    const buf = Buffer.from(await file.arrayBuffer());
-    const rows: Row[] = parse(buf, { columns: true, skip_empty_lines: true, bom: true });
-
-    if (!rows.length) return NextResponse.json({ inserted: 0, skipped: 0, suppressed: 0, invalid: 0, rejectsBase64: null });
-
-    const headers = Object.keys(rows[0]);
-    const map = guess(headers);
-
-    // Preload suppression set (email + domain)
-    const allEmails = new Set<string>();
-    const allDomains = new Set<string>();
-    for (const r of rows) {
-      const raw = r[map.email] || r["email"] || r["Email"] || "";
-      const e = normalizeEmail(raw);
-      if (e) {
-        allEmails.add(e);
-        const d = emailDomain(e);
-        if (d) allDomains.add(d);
-      }
-    }
-    const { data: suppressed } = await supabase
-      .from("suppressions")
-      .select("kind, value_lower")
-      .eq("user_id", user.id)
-      .in("value_lower", [...allEmails, ...allDomains]);
-
-    const supEmails = new Set((suppressed || []).filter(s => s.kind === "email").map(s => s.value_lower));
-    const supDomains = new Set((suppressed || []).filter(s => s.kind === "domain").map(s => s.value_lower));
-
-    // Preload existing contacts to dedupe against DB
-    const { data: existing } = await supabase
-      .from("contacts")
-      .select("email_lower")
-      .eq("user_id", user.id);
-    const existingSet = new Set((existing || []).map(x => String(x.email_lower).toLowerCase()));
-
-    const toInsert: any[] = [];
-    const seenInFile = new Set<string>();
-    const rejects: any[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-
-      // Build candidate
-      const rawEmail = normalizeEmail(r[map.email] || r["email"] || r["Email"] || "");
-      const okEmail = isLikelyEmail(rawEmail);
-      if (!okEmail) {
-        rejects.push({ row: i + 2, reason: "invalid_email", email: rawEmail }); // +2 accounts for header + 1-indexed
-        continue;
-      }
-
-      // dedupe within file
-      if (seenInFile.has(rawEmail)) {
-        rejects.push({ row: i + 2, reason: "duplicate_in_file", email: rawEmail });
-        continue;
-      }
-
-      // suppression check
-      const dom = emailDomain(rawEmail);
-      if (supEmails.has(rawEmail) || (dom && supDomains.has(dom))) {
-        rejects.push({ row: i + 2, reason: "suppressed", email: rawEmail });
-        continue;
-      }
-
-      // dedupe against DB
-      if (existingSet.has(rawEmail)) {
-        rejects.push({ row: i + 2, reason: "already_exists", email: rawEmail });
-        continue;
-      }
-
-      seenInFile.add(rawEmail);
-
-      // name resolution
-      let name = (r[map.name] || "").toString().trim();
-      const first = (r[map.first] || "").toString().trim();
-      const last = (r[map.last] || "").toString().trim();
-      if (!name && (first || last)) name = `${first} ${last}`.trim();
-
-      // company/tags
-      const company = (r[map.company] || "").toString().trim() || null;
-      const tags = new Set<string>();
-      if (r[map.tags]) {
-        String(r[map.tags]).split(/[;,]/).map(s => s.trim()).filter(Boolean).forEach(t => tags.add(t));
-      }
-      if (addTag) tags.add(addTag);
-
-      // gather custom extra fields
-      const reserved = new Set([map.email, map.name, map.first, map.last, map.company, map.tags].filter(Boolean));
-      const custom: Record<string, string> = {};
-      for (const k of Object.keys(r)) {
-        if (!reserved.has(k)) {
-          const v = r[k];
-          if (v !== undefined && v !== null && String(v).trim() !== "") custom[k] = String(v);
-        }
-      }
-
-      toInsert.push({
-        user_id: user.id,
-        email: rawEmail,
-        name: name || null,
-        company,
-        tags: Array.from(tags),
-        custom: Object.keys(custom).length ? custom : null,
-      });
-    }
-
-    // Insert
-    let inserted = 0;
-    if (toInsert.length) {
-      const { error } = await supabase.from("contacts").insert(toInsert);
-      if (error) {
-        // If something fails catastrophically, mark all pending as rejects
-        for (const c of toInsert) rejects.push({ row: null, reason: "insert_failed", email: c.email });
-      } else {
-        inserted = toInsert.length;
-      }
-    }
-
-    // Build a CSV of rejects
-    let rejectsBase64: string | null = null;
-    if (rejects.length) {
-      const header = "row,email,reason\n";
-      const body = rejects.map(x => `${x.row ?? ""},${x.email ?? ""},${x.reason}`).join("\n");
-      rejectsBase64 = Buffer.from(header + body, "utf8").toString("base64");
-    }
-
-    const invalid = rejects.filter(r => r.reason === "invalid_email").length;
-    const suppressedCnt = rejects.filter(r => r.reason === "suppressed").length;
-    const skipped = rejects.length - invalid - suppressedCnt; // dupes/existing/insert_failed
-
-    return NextResponse.json({
-      inserted,
-      skipped,
-      suppressed: suppressedCnt,
-      invalid,
-      total_in_file: rows.length,
-      rejectsBase64,
-      rejectsFilename: "rejected.csv",
-    });
-  } catch (e: any) {
-    console.error(e);
     return NextResponse.json({ error: e?.message || "Import failed" }, { status: 500 });
   }
 }

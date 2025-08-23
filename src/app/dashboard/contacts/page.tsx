@@ -47,6 +47,21 @@ export default function Contacts() {
         </div>
       )}
 
+      <div className="flex gap-4">
+        <Link
+          href="/dashboard/contacts/import"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Import Contacts
+        </Link>
+        <Link
+          href="/dashboard/contacts/suppression"
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+        >
+          Suppression List
+        </Link>
+      </div>
+
       <ContactsImporter onImported={(r) => {
         setBanner(`${r.inserted} contacts uploaded.`);
         refresh();
@@ -59,20 +74,20 @@ export default function Contacts() {
           <table className="min-w-full border rounded-lg overflow-hidden">
             <thead className="bg-gray-100 text-left">
               <tr>
-                <th className="px-4 py-2 border">Name</th>
+                <th className="px-4 py-2 border">First Name</th>
+                <th className="px-4 py-2 border">Last Name</th>
                 <th className="px-4 py-2 border">Email</th>
                 <th className="px-4 py-2 border">Company</th>
-                <th className="px-4 py-2 border">Score</th>
                 <th className="px-4 py-2 border">Added</th>
               </tr>
             </thead>
             <tbody>
               {items.map((row: any) => (
                 <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 border text-sm">{row.name || "-"}</td>
+                  <td className="px-4 py-2 border text-sm">{row.first_name || "-"}</td>
+                  <td className="px-4 py-2 border text-sm">{row.last_name || "-"}</td>
                   <td className="px-4 py-2 border text-sm">{row.email}</td>
                   <td className="px-4 py-2 border text-sm">{row.company || "-"}</td>
-                  <td className="px-4 py-2 border text-sm">{typeof row.lead_score === 'number' ? row.lead_score : '-'}</td>
                   <td className="px-4 py-2 border text-sm">{new Date(row.created_at).toLocaleString()}</td>
                 </tr>
               ))}

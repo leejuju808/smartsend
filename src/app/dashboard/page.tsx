@@ -24,6 +24,7 @@ import DashboardMetrics from './components/DashboardMetrics'
 import MonthlyUsageMeter from '@/components/MonthlyUsageMeter'
 import ContactsImporter from '@/components/ContactsImporter'
 import SuppressionManager from '@/components/SuppressionManager'
+import { UpgradeToast } from '@/components/UpgradeToast'
 
 export default function DashboardPage() {
   const [formData, setFormData] = useState({
@@ -192,163 +193,166 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <MonthlyUsageMeter />
-      {authUserId ? (
-        <DailySendsCard userId={authUserId} />
-      ) : null}
-      {/* Metrics */}
-      {authUserId ? (
-        <DashboardMetrics userId={authUserId} onZeroState={() => {}} />
-      ) : null}
-      <div className="border rounded-lg p-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium">Instant Demo</div>
-            <div className="text-sm text-gray-600">Seed a demo campaign to see metrics immediately.</div>
+    <div className="min-h-screen bg-gray-50">
+      <UpgradeToast />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <MonthlyUsageMeter />
+        {authUserId ? (
+          <DailySendsCard userId={authUserId} />
+        ) : null}
+        {/* Metrics */}
+        {authUserId ? (
+          <DashboardMetrics userId={authUserId} onZeroState={() => {}} />
+        ) : null}
+        <div className="border rounded-lg p-4 bg-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium">Instant Demo</div>
+              <div className="text-sm text-gray-600">Seed a demo campaign to see metrics immediately.</div>
+            </div>
+            {authUserId ? (
+              <DemoSeedButton
+                userId={authUserId}
+                onDone={(m) => {
+                  setDemoDone(true)
+                  setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
+                }}
+              />
+            ) : null}
           </div>
-          {authUserId ? (
-            <DemoSeedButton
-              userId={authUserId}
-              onDone={(m) => {
-                setDemoDone(true)
-                setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
-              }}
-            />
-          ) : null}
+          {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
         </div>
-        {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
-      </div>
-      <div className="grid gap-6 md:grid-cols-2">
-        <ContactsImporter />
-        <SuppressionManager />
-      </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <ContactsImporter />
+          <SuppressionManager />
+        </div>
 
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Generate Cold Emails</h1>
-        <p className="mt-2 text-gray-600">Create compelling cold emails tailored to your target audience</p>
-      </div>
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Generate Cold Emails</h1>
+          <p className="mt-2 text-gray-600">Create compelling cold emails tailored to your target audience</p>
+        </div>
 
-      {/* Form */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="targetAudience" className="block text-sm font-medium text-gray-700 mb-2">
-                <Target className="inline h-4 w-4 mr-1" />
-                Target Audience
-              </label>
-              <input
-                type="text"
-                id="targetAudience"
-                value={formData.targetAudience}
-                onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value })}
-                placeholder="e.g., SaaS founders, marketing managers, tech startups"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="productService" className="block text-sm font-medium text-gray-700 mb-2">
-                <Package className="inline h-4 w-4 mr-1" />
-                Product/Service
-              </label>
-              <input
-                type="text"
-                id="productService"
-                value={formData.productService}
-                onChange={(e) => setFormData({ ...formData, productService: e.target.value })}
-                placeholder="e.g., AI-powered email automation tool"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="tone" className="block text-sm font-medium text-gray-700 mb-2">
-              <MessageSquare className="inline h-4 w-4 mr-1" />
-              Tone
-            </label>
-            <select
-              id="tone"
-              value={formData.tone}
-              onChange={(e) => setFormData({ ...formData, tone: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="professional">Professional</option>
-              <option value="casual">Casual</option>
-              <option value="friendly">Friendly</option>
-              <option value="formal">Formal</option>
-            </select>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-md flex items-center justify-center"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                Generating emails...
-              </>
-            ) : (
-              <>
-                <Zap className="h-5 w-5 mr-2" />
-                Generate Cold Emails
-              </>
-            )}
-          </button>
-        </form>
-      </div>
-
-      {/* Results */}
-      {generatedEmails && (
+        {/* Form */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Generated Emails</h2>
-          <div className="space-y-6">
-            {parseEmails(generatedEmails).map((email) => (
-              <div key={email.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-900">{email.subject}</h3>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => copyToClipboard(email.fullText, email.id)}
-                      className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                    >
-                      {copied === email.id ? (
-                        <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
-                      ) : (
-                        <Copy className="h-4 w-4 mr-1" />
-                      )}
-                      {copied === email.id ? 'Copied!' : 'Copy'}
-                    </button>
-                    <button
-                      onClick={() => saveEmail(email.fullText, email.id)}
-                      className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                    >
-                      {saved === email.id ? (
-                        <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
-                      ) : (
-                        <Save className="h-4 w-4 mr-1" />
-                      )}
-                      {saved === email.id ? 'Saved!' : 'Save'}
-                    </button>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="targetAudience" className="block text-sm font-medium text-gray-700 mb-2">
+                  <Target className="inline h-4 w-4 mr-1" />
+                  Target Audience
+                </label>
+                <input
+                  type="text"
+                  id="targetAudience"
+                  value={formData.targetAudience}
+                  onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value })}
+                  placeholder="e.g., SaaS founders, marketing managers, tech startups"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="productService" className="block text-sm font-medium text-gray-700 mb-2">
+                  <Package className="inline h-4 w-4 mr-1" />
+                  Product/Service
+                </label>
+                <input
+                  type="text"
+                  id="productService"
+                  value={formData.productService}
+                  onChange={(e) => setFormData({ ...formData, productService: e.target.value })}
+                  placeholder="e.g., AI-powered email automation tool"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="tone" className="block text-sm font-medium text-gray-700 mb-2">
+                <MessageSquare className="inline h-4 w-4 mr-1" />
+                Tone
+              </label>
+              <select
+                id="tone"
+                value={formData.tone}
+                onChange={(e) => setFormData({ ...formData, tone: e.target.value as any })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="professional">Professional</option>
+                <option value="casual">Casual</option>
+                <option value="friendly">Friendly</option>
+                <option value="formal">Formal</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-md flex items-center justify-center"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin h-5 w-5 mr-2" />
+                  Generating emails...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-5 w-5 mr-2" />
+                  Generate Cold Emails
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Results */}
+        {generatedEmails && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Generated Emails</h2>
+            <div className="space-y-6">
+              {parseEmails(generatedEmails).map((email) => (
+                <div key={email.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-gray-900">{email.subject}</h3>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => copyToClipboard(email.fullText, email.id)}
+                        className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
+                      >
+                        {copied === email.id ? (
+                          <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4 mr-1" />
+                        )}
+                        {copied === email.id ? 'Copied!' : 'Copy'}
+                      </button>
+                      <button
+                        onClick={() => saveEmail(email.fullText, email.id)}
+                        className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
+                      >
+                        {saved === email.id ? (
+                          <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-1" />
+                        )}
+                        {saved === email.id ? 'Saved!' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                      {email.body}
+                    </pre>
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-md p-3">
-                  <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                    {email.body}
-                  </pre>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 } 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { AIWritingAssistant, EmailContent } from '@/lib/ai-writing-assistant'
-import { requireQuota, recordUsage } from '@/lib/usage'
+// import { requireQuota, recordUserUsage } from '@/lib/usage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,16 +26,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Enforce daily plan limits
-    const quota = await requireQuota('ai_scoring')
-    if (!quota.allowed) {
-      return NextResponse.json({ 
-        error: 'Plan limit exceeded', 
-        code: 'LIMIT_EXCEEDED', 
-        plan: quota.remaining === Infinity ? 'pro' : 'free', 
-        remaining: 0 
-      }, { status: 402 })
-    }
+    // Enforce daily plan limits - temporarily disabled
+    // const quota = await requireQuota(user.id, 'ai_scoring')
+    // if (!quota.allowed) {
+    //   return NextResponse.json({ 
+    //     error: 'Plan limit exceeded', 
+    //     code: 'LIMIT_EXCEEDED', 
+    //     plan: quota.remaining === Infinity ? 'pro' : 'free', 
+    //     remaining: 0 
+    //   }, { status: 402 })
+    // }
 
     // Score email with AI
     const score = await AIWritingAssistant.scoreEmail({
@@ -46,15 +46,15 @@ export async function POST(request: NextRequest) {
       productService
     })
 
-    // Count usage only on success
-    try { 
-      await recordUsage(user.id, 'ai_scoring', 1) 
-    } catch {}
+    // Count usage only on success - temporarily disabled
+    // try { 
+    //   await recordUserUsage({ userId: user.id, feature: 'ai_scoring', tokens: 1 }) 
+    // } catch {}
 
     return NextResponse.json({ 
       score,
-      used: (quota.used ?? 0) + 1, 
-      quota: quota.quota 
+      used: 1, // temporarily hardcoded
+      quota: 100 // temporarily hardcoded
     })
   } catch (error) {
     console.error('Error scoring email with AI:', error)

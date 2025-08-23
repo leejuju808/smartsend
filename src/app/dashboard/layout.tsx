@@ -24,6 +24,8 @@ import { canManageBilling } from '@/utils/permissions'
 import FeedbackWidget from '@/components/FeedbackWidget'
 import UpgradeNudgeModal from '@/components/billing/UpgradeNudgeModal'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
+import UpgradeBanner from '@/components/UpgradeBanner'
+import TrialBadge from '@/components/TrialBadge'
 
 export default function DashboardLayout({
   children,
@@ -137,6 +139,13 @@ export default function DashboardLayout({
             >
               <History className="mr-3 h-5 w-5" />
               Email History
+            </Link>
+            <Link
+              href="/dashboard/contacts"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Users className="mr-3 h-5 w-5" />
+              Contacts
             </Link>
             <Link
               href="/dashboard/logs"
@@ -253,6 +262,13 @@ export default function DashboardLayout({
               Email History
             </Link>
             <Link
+              href="/dashboard/contacts"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Users className="mr-3 h-5 w-5" />
+              Contacts
+            </Link>
+            <Link
               href="/dashboard/logs"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
             >
@@ -330,6 +346,7 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <div className="lg:pl-64">
+        <UpgradeBanner />
         <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
           <button
             type="button"
@@ -341,9 +358,12 @@ export default function DashboardLayout({
           <div className="hidden lg:block w-64">
             <WorkspaceSwitcher />
           </div>
-          {ready && (
-            <span className="ml-auto text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Ready to Launch ✅</span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            <TrialBadge />
+            {ready && (
+              <span className="text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Ready to Launch ✅</span>
+            )}
+          </div>
         </div>
 
         {quiet && (

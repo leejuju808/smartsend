@@ -135,6 +135,16 @@ ALTER TABLE public.profiles
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
 
+-- Add Stripe-related columns to profiles table
+alter table public.profiles
+  add column if not exists stripe_customer_id text,
+  add column if not exists stripe_subscription_id text,
+  add column if not exists subscription_status text default 'free',
+  add column if not exists subscription_current_period_end timestamptz;
+
+-- Create index for faster lookups
+create index if not exists idx_profiles_stripe_customer on public.profiles (stripe_customer_id);
+
 -- Helpful index on primary key (idempotent; primary key already indexed, but keep per instructions)
 CREATE INDEX IF NOT EXISTS idx_profiles_user ON public.profiles (id);
 
@@ -284,3 +294,63 @@ create policy "Users can manage own connected accounts"
   on public.connected_accounts for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- Contacts and Suppression List Setup
+-- Run this in Supabase SQL editor:
+
+-- 1) Contacts table
+create table if not exists public.contacts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,                      -- owner (from your auth.users.id)
+  email text not null,
+  first_name text,
+  last_name text,
+  company text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Enforce uniqueness per user
+create unique index if not exists contacts_user_email_unique
+on public.contacts (user_id, lower(email));
+
+-- 2) Suppression (global per user: don't email these)
+create table if not exists public.suppression_list (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  email text not null,
+  reason text,                    -- e.g. "unsubscribed", "bounced", "complaint"
+  created_at timestamptz default now()
+);
+
+create unique index if not exists suppression_user_email_unique
+on public.suppression_list (user_id, lower(email));
+
+-- 3) RLS (optional – if you're using RLS)
+alter table public.contacts enable row level security;
+alter table public.suppression_list enable row level security;
+
+create policy if not exists "contacts_owner_rw"
+on public.contacts
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy if not exists "suppression_owner_rw"
+on public.suppression_list
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+-- 4) updated_at trigger
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end $$;
+
+drop trigger if exists trg_contacts_touch on public.contacts;
+create trigger trg_contacts_touch
+before update on public.contacts
+for each row execute function public.touch_updated_at();

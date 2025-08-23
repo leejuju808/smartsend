@@ -17,12 +17,14 @@ export default function NewCampaignPage() {
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState<number | null>(null);
   const [contacts, setContacts] = useState<MinimalContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(true);
   const [sampleIdx, setSampleIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
+        setLoadingContacts(true);
         const r = await fetch("/api/contacts/list");
         if (!r.ok) {
           throw new Error(`Failed to fetch contacts: ${r.status}`);
@@ -32,6 +34,8 @@ export default function NewCampaignPage() {
       } catch (err) {
         console.error("Failed to fetch contacts:", err);
         setError("Failed to load contacts");
+      } finally {
+        setLoadingContacts(false);
       }
     })();
   }, []);
@@ -43,6 +47,13 @@ export default function NewCampaignPage() {
   async function create() {
     if (!name.trim() || !subject.trim() || !body.trim()) {
       setError("Please fill in all required fields");
+      return;
+    }
+
+    // Validate that at least one segment criteria is specified
+    const hasSegmentCriteria = tagsAny.trim() || includeDomains.trim() || excludeDomains.trim();
+    if (!hasSegmentCriteria) {
+      setError("Please specify at least one segment criteria (tags, include domains, or exclude domains)");
       return;
     }
 
@@ -65,16 +76,17 @@ export default function NewCampaignPage() {
       });
       
       if (!res.ok) {
-        throw new Error(`Failed to create campaign: ${res.status}`);
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to create campaign: ${res.status}`);
       }
       
       const j = await res.json();
       
-      if (j?.ok) {
+      if (j?.ok && j?.campaign) {
         setCreatedId(j.campaign.id);
         setPreviewTotal(j.campaign.total);
       } else {
-        throw new Error(j?.error || "Failed to create campaign");
+        throw new Error("Invalid response from server");
       }
     } catch (err) {
       console.error("Failed to create campaign:", err);
@@ -122,7 +134,9 @@ export default function NewCampaignPage() {
           <li><code>{`{{company}}`}</code> → Company</li>
           <li><code>{`{{email}}`}</code> → Email</li>
         </ul>
-        {contacts.length > 0 && (
+        {loadingContacts ? (
+          <div className="text-xs text-gray-500">Loading contacts...</div>
+        ) : contacts.length > 0 ? (
           <div className="mt-2">
             <div className="text-xs text-gray-600 mb-2">Live Preview (random contact)</div>
             <div className="rounded-xl border p-3 bg-white">
@@ -139,13 +153,18 @@ export default function NewCampaignPage() {
               Shuffle Contact
             </button>
           </div>
-        )}
-        {contacts.length === 0 && (
+        ) : (
           <div className="text-xs text-gray-500">
-            Add contacts to see a live preview.
-            <span className="ml-2 underline">
-              <Link href="/dashboard/contacts">Go to Contacts</Link>
-            </span>
+            {error === "Failed to load contacts" ? (
+              <span className="text-red-600">Failed to load contacts. Please refresh the page.</span>
+            ) : (
+              <>
+                Add contacts to see a live preview.
+                <span className="ml-2 underline">
+                  <Link href="/dashboard/contacts">Go to Contacts</Link>
+                </span>
+              </>
+            )}
           </div>
         )}
       </div>

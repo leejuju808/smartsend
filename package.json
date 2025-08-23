@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "e2e": "playwright test --project=chromium",
-    "dunning:send": "tsx scripts/dunning-send.ts"
+    "dunning:send": "tsx scripts/dunning-send.ts",
+    "trial:expired": "tsx scripts/send-trial-expired.ts"
   },
   "dependencies": {
     "@sentry/node": "^7.118.0",

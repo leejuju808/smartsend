@@ -113,4 +113,12 @@ export interface Subscription {
   current_period_end: string
   created_at: string
   updated_at: string
+}
+
+export interface TrialEmail {
+  id: string
+  user_id: string
+  email: string
+  type: 'trial_expired'
+  created_at: string
 } 

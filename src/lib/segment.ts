@@ -19,8 +19,20 @@ export async function resolveSegmentCount(seg: Segment) {
   if (!seg.includeUnsubscribed) q = q.eq("unsubscribed", false);
   if (seg.tagsAny?.length) q = q.contains("tags", seg.tagsAny);
   if (seg.search?.trim()) q = q.ilike("email", `%${seg.search.trim()}%`);
-  if (seg.includeDomains?.length) q = q.or(seg.includeDomains.map(d => `email.ilike.%@${d}`).join(","));
-  if (seg.excludeDomains?.length) q = q.not("email", "ilike", `%@${seg.excludeDomains[0]}`);
+  
+  // Handle include domains
+  if (seg.includeDomains?.length) {
+    const domainFilters = seg.includeDomains.map(d => `email.ilike.%@${d}`).join(",");
+    q = q.or(domainFilters);
+  }
+  
+  // Handle exclude domains - apply each exclusion
+  if (seg.excludeDomains?.length) {
+    for (const domain of seg.excludeDomains) {
+      q = q.not("email", "ilike", `%@${domain}`);
+    }
+  }
+  
   const { count } = await q;
   return count || 0;
 }

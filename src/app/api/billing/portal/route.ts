@@ -1,37 +1,30 @@
-import { NextResponse } from 'next/server'
-import { stripe } from '@/lib/stripe'
-import { supabaseAdmin } from '@/server/supabase'
+import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
+import { getSubscriptionStatus } from "@/lib/subscription";
+import { supabaseAdmin } from "@/server/supabase";
 
-// TEMP: Replace with real auth/session
-async function getUserId(req: Request) {
-  const url = new URL(req.url)
-  return url.searchParams.get('userId')
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" });
 
-export async function POST(req: Request) {
-  try {
-    const userId = await getUserId(req)
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function POST(_req: NextRequest) {
+  const { userId, status } = await getSubscriptionStatus();
+  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    const { data: prof, error } = await supabaseAdmin
-      .from('profiles')
-      .select('stripe_customer_id')
-      .eq('id', String(userId))
-      .single()
+  // Find stripe_customer_id for this user
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('stripe_customer_id')
+    .eq('id', userId)
+    .maybeSingle();
 
-    if (error || !prof?.stripe_customer_id) {
-      return NextResponse.json({ error: 'Missing stripe_customer_id' }, { status: 400 })
-    }
-
-    const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '')
-    const session = await stripe.billingPortal.sessions.create({
-      customer: String(prof.stripe_customer_id),
-      return_url: `${baseUrl}/dashboard/billing?from=portal`,
-    })
-
-    return NextResponse.json({ url: session.url })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 })
+  if (error || !profile?.stripe_customer_id) {
+    return NextResponse.json({ error: "No Stripe customer on file" }, { status: 400 });
   }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: profile.stripe_customer_id,
+    return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing`,
+  });
+
+  return NextResponse.json({ url: session.url });
 }
 

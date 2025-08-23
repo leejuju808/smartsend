@@ -1,13 +1,10 @@
 export type MinimalContact = {
-  first_name?: string | null;
-  last_name?: string | null;
   name?: string | null;
   company?: string | null;
   email?: string | null;
 };
 
 function deriveFirst(contact: MinimalContact): string {
-  if (contact.first_name) return String(contact.first_name);
   if (contact.name) {
     const parts = String(contact.name).trim().split(/\s+/);
     return parts[0] || "";
@@ -16,7 +13,6 @@ function deriveFirst(contact: MinimalContact): string {
 }
 
 function deriveLast(contact: MinimalContact): string {
-  if (contact.last_name) return String(contact.last_name);
   if (contact.name) {
     const parts = String(contact.name).trim().split(/\s+/);
     return parts.slice(1).join(" ");

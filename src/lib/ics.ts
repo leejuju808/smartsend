@@ -68,3 +68,29 @@ export function makeIcs({
   return lines.join("\r\n");
 }
 
+export function buildSimpleICS(opts: {
+  title: string; description?: string; url?: string;
+  start: Date; end: Date; organizer: string;
+}): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dt = (d: Date) =>
+    d.getUTCFullYear()
+    + pad(d.getUTCMonth()+1)
+    + pad(d.getUTCDate())
+    + "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + "00Z";
+  const uid = `smartsend-${Date.now()}@yourdomain.com`;
+  return [
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//SmartSendAI//EN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${dt(new Date())}`,
+    `DTSTART:${dt(opts.start)}`,
+    `DTEND:${dt(opts.end)}`,
+    `SUMMARY:${opts.title}`,
+    opts.description ? `DESCRIPTION:${opts.description}` : "",
+    opts.url ? `URL:${opts.url}` : "",
+    `ORGANIZER:${opts.organizer}`,
+    "END:VEVENT","END:VCALENDAR",""
+  ].join("\r\n");
+}
+

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { AIWritingAssistant, OptimizationRequest } from '@/lib/ai-writing-assistant'
-import { requireQuota, recordUsage } from '@/lib/usage'
+import { requireQuota, recordUserUsage } from '@/lib/usage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Enforce daily plan limits
-    const quota = await requireQuota('ai_optimization')
+    const quota = await requireQuota(user.id, 'ai_optimization')
     if (!quota.allowed) {
       return NextResponse.json({ 
         error: 'Plan limit exceeded', 
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Count usage only on success
     try { 
-      await recordUsage(user.id, 'ai_optimization', 1) 
+      await recordUserUsage({ userId: user.id, feature: 'ai_optimization', tokens: 1 }) 
     } catch {}
 
     return NextResponse.json({ 
