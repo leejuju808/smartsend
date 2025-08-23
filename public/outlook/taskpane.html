@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 14px; }
+    .btn { padding:8px 12px; border-radius:8px; border:1px solid #ddd; margin:4px 0; cursor:pointer; width:100%; text-align:left;}
+    .primary { background:#000; color:#fff; border-color:#000; }
+  </style>
+</head>
+<body>
+  <h3>SmartSendAI</h3>
+  <p style="color:#555">Get suggested replies based on the current draft.</p>
+  <button id="get" class="btn primary">✨ Suggest Replies</button>
+  <div id="sugs"></div>
+
+<script>
+Office.onReady(() => {});
+
+async function getBodyText(){
+  return new Promise((resolve)=>{
+    Office.context.mailbox.item.body.getAsync(Office.CoercionType.Text, r=>{
+      resolve((r && r.status === Office.AsyncResultStatus.Succeeded) ? r.value : "");
+    });
+  });
+}
+
+document.getElementById("get").onclick = async () => {
+  const draft = await getBodyText();
+  const token = localStorage.getItem("smartsend_ext_token") || ""; // optional: link via your web app
+  const r = await fetch("https://yourdomain.com/api/replies/assist",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", ...(token?{Authorization:"Bearer "+token}:{}) },
+    body: JSON.stringify({ lastMessage: draft, vars: { my_name: "You" } })
+  });
+  const j = await r.json(); const sugs = j?.suggestions || [];
+  const box = document.getElementById("sugs"); box.innerHTML = "";
+  if (!sugs.length) { box.innerHTML = "<p>No suggestions yet.</p>"; return; }
+  sugs.slice(0,3).forEach(s=>{
+    const b=document.createElement("button");
+    b.className="btn";
+    b.textContent=`[${s.type||"reply"}] ${s.text.slice(0,80)}…`;
+    b.onclick=()=> {
+      Office.context.mailbox.item.body.setSelectedDataAsync("\n\n"+s.text, { coercionType: Office.CoercionType.Text });
+      fetch("https://yourdomain.com/api/analytics/track",{ method:"POST", headers:{ "Content-Type":"application/json", ...(token?{Authorization:"Bearer "+token}:{}) }, body: JSON.stringify({ name:"outlook_variant_picked", context:{ type:s.type, tone:s.tone } }) });
+    };
+    box.appendChild(b);
+  });
+};
+</script>
+</body>
+</html> 

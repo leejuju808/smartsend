@@ -2,6 +2,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { recordEvent } from '@/lib/events'
+import { autoJoinByDomain } from '@/lib/autoJoinByDomain'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -29,6 +31,13 @@ export async function GET(request: NextRequest) {
               .from('workspace_members')
               .insert({ workspace_id: (ws as any).id, user_id: user.id, role: 'owner' })
           }
+          // Record signup event
+          await recordEvent(user.id, "signup", { email: user.email });
+          
+          // Try auto-join by domain
+          if (user.email) {
+            await autoJoinByDomain(user.id, user.email);
+          }
         }
       }
     } catch {}
@@ -55,6 +64,11 @@ export async function GET(request: NextRequest) {
           } else {
             await admin.from('referrals').upsert({ inviter: inviterId, invitee: user.id, email: (user.email || '').toLowerCase(), status: 'joined' })
           }
+        }
+        
+        // Try auto-join by domain for existing users too
+        if (user?.email) {
+          await autoJoinByDomain(user.id, user.email);
         }
       }
     } catch {}

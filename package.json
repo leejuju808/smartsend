@@ -11,7 +11,14 @@
     "test": "jest --runInBand",
     "e2e": "playwright test --project=chromium",
     "dunning:send": "tsx scripts/dunning-send.ts",
-    "trial:expired": "tsx scripts/send-trial-expired.ts"
+    "trial:expired": "tsx scripts/send-trial-expired.ts",
+    "waitlist:drip": "tsx scripts/send-waitlist-drip.ts",
+    "waitlist:test": "tsx scripts/test-waitlist-drip.ts",
+    "weekly:summary": "tsx scripts/weekly-summary.ts",
+    "test:salesforce": "tsx scripts/test-salesforce.ts",
+    "test:hubspot": "tsx scripts/test-hubspot.ts",
+    "test:slack-slash": "tsx scripts/test-slack-slash-command.ts",
+    "refresh-domains": "tsx scripts/refresh-domain-signups.ts"
   },
   "dependencies": {
     "@sentry/node": "^7.118.0",

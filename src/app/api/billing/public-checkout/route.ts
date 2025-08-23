@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/server/supabase";
+import { recordEvent } from "@/lib/events";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-07-30.basil" });
 
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
+    const { email, plan = "monthly", promotion_code } = await req.json();
     if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
     const e = String(email).trim().toLowerCase();
 
@@ -48,18 +49,33 @@ export async function POST(req: NextRequest) {
     });
 
     // 3) Create Stripe Checkout using client_reference_id & customer_email
+    const priceBase = plan === "annual"
+      ? process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_ANNUAL!
+      : process.env.NEXT_PUBLIC_STRIPE_PRICE_ID!;
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_creation: "always",                  // ensure a Customer is created
       customer_email: e,                            // helps match in webhook as a fallback
       payment_method_types: ["card"],
-      line_items: [{ price: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID!, quantity: 1 }],
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?upgrade=success`,
+      line_items: [{ price: priceBase, quantity: 1 }],
+      allow_promotion_codes: true,
+      ...(promotion_code ? { discounts: [{ promotion_code }] } : {}),
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?upgrade=success&plan=${plan}`,
       cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pricing?upgrade=cancel`,
       client_reference_id: userId!,                 // tie back to our user
       consent_collection: { terms_of_service: "required" }, // optional
-      allow_promotion_codes: true,                  // optional
     });
+
+    // Record checkout initiated event with plan info
+    if (userId) {
+      await recordEvent(userId, "checkout_initiated", { plan });
+      
+      // Log promo clicked event if promotion code was used
+      if (promotion_code) {
+        await recordEvent(userId, "promo_clicked", { promotion_code, plan });
+      }
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {

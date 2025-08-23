@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { recordEvent } from "@/lib/events";
 
 type IncomingContact = {
   email: string;
@@ -79,6 +80,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
       inserted += records.length;
+    }
+
+    // Record contacts import event
+    await recordEvent(userId, "contacts_imported", { count: inserted });
+
+    // Increment trial counters if user is trialing
+    try {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("subscription_status")
+        .eq("id", userId)
+        .maybeSingle();
+      
+      if (prof?.subscription_status === "trialing") {
+        await supabase.rpc("increment_trial_contacts", { uid: userId, n: inserted });
+      }
+    } catch (error) {
+      // Don't fail the import if trial counting fails
+      console.warn('Trial counting error:', error);
+    }
+
+    // Mark onboarding step as complete
+    try {
+      const { data, error } = await supabase.rpc("merge_onboarding_step", {
+        uid: userId,
+        k: "import_contacts",
+      });
+      if (error) {
+        console.warn('Failed to update onboarding step:', error);
+      }
+    } catch (e) {
+      // Don't fail the import if onboarding update fails
+      console.warn('Failed to update onboarding step:', e);
     }
 
     return NextResponse.json({

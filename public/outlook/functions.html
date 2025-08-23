@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<script>
+Office.onReady(() => {});
+
+function openPane(event){
+  Office.context.ui.displayDialogAsync(
+    "https://yourdomain.com/outlook/taskpane.html",
+    { height: 60, width: 35, displayInIframe: true },
+    () => event.completed()
+  );
+}
+
+function pad(n){return n<10?"0"+n:n}
+function toICSDate(dt){
+  return dt.getUTCFullYear()+pad(dt.getUTCMonth()+1)+pad(dt.getUTCDate())+
+    "T"+pad(dt.getUTCHours())+pad(dt.getUTCMinutes())+pad(dt.getUTCSeconds())+"Z";
+}
+function icsBlobUrl({title,desc,start,end,location}){
+  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//SmartSendAI//Meeting//EN","CALSCALE:GREGORIAN",
+  "BEGIN:VEVENT","UID:"+Date.now()+"@smartsendai",
+  "DTSTAMP:"+toICSDate(new Date()),"DTSTART:"+toICSDate(start),"DTEND:"+toICSDate(end),
+  "SUMMARY:"+title,"DESCRIPTION:"+desc,"LOCATION:"+(location||""),"END:VEVENT","END:VCALENDAR"];
+  const b = new Blob([lines.join("\r\n")],{type:"text/calendar"});
+  return URL.createObjectURL(b);
+}
+function nextSlots(minutes){
+  const base=new Date(), out=[]; let day=0;
+  while(out.length<3 && day<10){
+    const d=new Date(base); d.setDate(d.getDate()+day);
+    const dow=d.getDay(); if(dow===0||dow===6){ day++; continue; }
+    for(const h of [10,14,16]){
+      const s=new Date(d); s.setHours(h,0,0,0);
+      if(s>base){ const e=new Date(s.getTime()+minutes*60000); out.push({start:s,end:e}); if(out.length>=3) break; }
+    }
+    day++;
+  }
+  return out;
+}
+
+async function insertMeeting(event){
+  const dur=30;
+  const slots=nextSlots(dur);
+  const ics=icsBlobUrl({
+    title:"Intro call – SmartSendAI",
+    desc:"Quick intro + how we boost reply→meeting conversion.",
+    start:slots[0].start,end:slots[0].end,location:"Video call"
+  });
+  const text = [
+    "How's one of these times?",
+    `• Option 1: ${slots[0].start.toLocaleString()}`,
+    `• Option 2: ${slots[1].start.toLocaleString()}`,
+    `• Option 3: ${slots[2].start.toLocaleString()}`,
+    "",
+    "Add to calendar: "+ics
+  ].join("\n");
+
+  Office.context.mailbox.item.body.setSelectedDataAsync(text, { coercionType: Office.CoercionType.Text }, () => event.completed());
+}
+
+window.openPane = openPane;
+window.insertMeeting = insertMeeting;
+</script>
+</head>
+<body></body>
+</html> 

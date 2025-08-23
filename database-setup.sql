@@ -354,3 +354,45 @@ drop trigger if exists trg_contacts_touch on public.contacts;
 create trigger trg_contacts_touch
 before update on public.contacts
 for each row execute function public.touch_updated_at();
+
+-- A/B Testing Tables
+create table if not exists public.experiments (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,      -- e.g. "upgrade_banner"
+  variants jsonb not null, -- [{key:'A',weight:0.5},{key:'B',weight:0.5}]
+  created_at timestamptz default now()
+);
+
+create table if not exists public.experiment_assignments (
+  user_id uuid not null,
+  experiment_id uuid not null,
+  variant text not null,
+  assigned_at timestamptz default now(),
+  primary key (user_id, experiment_id)
+);
+
+create table if not exists public.experiment_events (
+  user_id uuid,
+  experiment_id uuid,
+  variant text,
+  event text,              -- 'viewed_banner', 'clicked_cta', 'converted'
+  created_at timestamptz default now()
+);
+
+-- Create indexes for performance
+create index if not exists idx_experiments_name on public.experiments(name);
+create index if not exists idx_experiment_assignments_user on public.experiment_assignments(user_id);
+create index if not exists idx_experiment_assignments_experiment on public.experiment_assignments(experiment_id);
+create index if not exists idx_experiment_events_experiment on public.experiment_events(experiment_id);
+create index if not exists idx_experiment_events_user on public.experiment_events(user_id);
+create index if not exists idx_experiment_events_created on public.experiment_events(created_at);
+
+-- Enable RLS
+alter table public.experiments enable row level security;
+alter table public.experiment_assignments enable row level security;
+alter table public.experiment_events enable row level security;
+
+-- RLS Policies (admin only for experiments, users can see their own assignments and events)
+create policy "Admin can manage experiments" on public.experiments for all using (auth.uid() in (select id from public.profiles where subscription_status = 'pro' and email like '%@smartsend.ai'));
+create policy "Users can view their own experiment assignments" on public.experiment_assignments for select using (auth.uid() = user_id);
+create policy "Users can view their own experiment events" on public.experiment_events for select using (auth.uid() = user_id);

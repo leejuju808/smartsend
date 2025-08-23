@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { wantsMeeting } from '@/lib/meeting-intent'
 import { buildSimpleICS } from '@/lib/ics'
+import ObjectionAssistant from '@/components/ObjectionAssistant'
 
 export default function InboxThreadPage() {
   const params = useParams() as any
@@ -127,6 +128,20 @@ export default function InboxThreadPage() {
               We'll automatically add your Calendly link and attach a calendar invite when you send this reply.
             </div>
           </div>
+        )}
+        
+        {/* Objection Assistant */}
+        {messages.length > 0 && (
+          <ObjectionAssistant
+            lastMessage={messages[messages.length - 1]?.body || ""}
+            vars={{
+              first_name: thread?.contact?.first_name || thread?.from?.split('@')[0] || "",
+              company: thread?.contact?.company || "",
+              my_name: "SmartSendAI Team",
+              calendly: process.env.NEXT_PUBLIC_CALENDLY_URL || "",
+            }}
+            onInsert={(text) => setReply(prev => prev ? prev + "\n\n" + text : text)}
+          />
         )}
         
         {/* Reply Form */}

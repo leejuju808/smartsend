@@ -28,6 +28,33 @@ export async function updateSubscriptionStatus(userId: string, status: Plan) {
     action: "subscription_status_updated",
     meta: { status },
   });
+
+  // If upgrading to pro, check for active experiment assignments and log conversion
+  if (status === "pro") {
+    try {
+      const { data: assignments } = await supabaseAdmin
+        .from("experiment_assignments")
+        .select("experiment_id, variant")
+        .eq("user_id", userId);
+      
+      if (assignments && assignments.length > 0) {
+        // Log conversion events for all active experiments
+        const conversionEvents = assignments.map(assignment => ({
+          user_id: userId,
+          experiment_id: assignment.experiment_id,
+          variant: assignment.variant,
+          event: "converted"
+        }));
+        
+        await supabaseAdmin
+          .from("experiment_events")
+          .insert(conversionEvents);
+      }
+    } catch (e) {
+      // Don't fail the subscription update if experiment tracking fails
+      console.warn('Failed to log experiment conversion:', e);
+    }
+  }
 }
 
 export async function findUserIdByCustomerId(cusId: string): Promise<string | null> {

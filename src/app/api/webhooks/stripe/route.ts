@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/server/supabase";
+import { recordEvent } from "@/lib/events";
 
 export const runtime = "nodejs"; // ensures Node runtime for crypto
 
@@ -40,6 +41,27 @@ export async function POST(req: NextRequest) {
         const customerId = (s.customer as string) || "";
         const email = (s.customer_details?.email || s.customer_email || "").toLowerCase();
 
+        // Mark promo as redeemed if discount was applied
+        const promoCodeId = (s.total_details?.breakdown?.discounts?.[0]?.discount?.promotion_code as string) || null;
+        if (userId && promoCodeId) {
+          await supabaseAdmin.from("user_promos")
+            .update({ redeemed: true })
+            .eq("user_id", userId)
+            .eq("promotion_code_id", promoCodeId);
+          
+          // Log promo converted event
+          try {
+            await supabaseAdmin.from("events").insert({
+              user_id: userId,
+              event: "promo_converted",
+              meta: { promotion_code: promoCodeId }
+            });
+          } catch (error) {
+            // Don't fail if event logging fails
+            console.error('Event logging error:', error);
+          }
+        }
+
         if (userId && customerId) {
           await setProfileByUserId(userId, {
             stripe_customer_id: customerId
@@ -54,13 +76,34 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      /** Handle topup credit pack purchases */
+      case "checkout.session.completed": {
+        const s = event.data.object as Stripe.Checkout.Session;
+        if (s.mode === "payment" && s.metadata?.userId && s.metadata?.pack_qty) {
+          const userId = s.metadata.userId as string;
+          const qty = parseInt(s.metadata.pack_qty as string, 10) || 0;
+
+          const { data: prof } = await supabaseAdmin
+            .from("profiles").select("team_id").eq("id", userId).maybeSingle();
+
+          if (prof?.team_id && qty > 0) {
+            await supabaseAdmin.rpc("add_team_credits", { tid: prof.team_id, n: qty });
+            // log event
+            await supabaseAdmin.from("events").insert({
+              user_id: userId, event: "topup_purchased", meta: { qty }
+            });
+          }
+        }
+        break;
+      }
+
       /** Created or updated subscription → set pro + save ids + period end */
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = (sub.customer as string) || "";
         const status = sub.status; // trialing, active, past_due, canceled, etc.
-        const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+        const periodEnd = (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000).toISOString() : null;
 
         // Map Stripe -> our status
         const appStatus =
@@ -73,6 +116,121 @@ export async function POST(req: NextRequest) {
           stripe_subscription_id: sub.id,
           subscription_current_period_end: periodEnd
         });
+
+        // Handle referral conversion for new Pro users
+        if (event.type === "customer.subscription.created" && (status === "active" || status === "trialing")) {
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("id")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          
+          if (profile?.id) {
+            // Find and mark referral as converted
+            const { data: referral } = await supabaseAdmin
+              .from("referrals")
+              .select("inviter")
+              .eq("invitee", profile.id)
+              .eq("status", "joined")
+              .maybeSingle();
+            
+            if (referral?.inviter) {
+              // Mark referral as converted
+              await supabaseAdmin.from("referrals")
+                .update({ status: "converted" })
+                .eq("invitee", profile.id);
+              
+              // Grant referral credits to inviter
+              await supabaseAdmin.rpc("increment_referral_credits", { referrer: referral.inviter });
+            }
+          }
+        }
+
+        // Find the metered item on this subscription and update team
+        const meteredPrice = process.env.NEXT_PUBLIC_STRIPE_METERED_PRICE_ID!;
+        const usageItem = sub.items.data.find(i => (i.price?.id === meteredPrice));
+        const usageItemId = usageItem?.id || null;
+
+        // Period window
+        const periodStart = (sub as any).current_period_start ? new Date((sub as any).current_period_start * 1000).toISOString() : null;
+        const periodEndTeam = (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000).toISOString() : null;
+
+        // Resolve team for this owner and update with usage tracking info
+        if (usageItemId) {
+          const { data: owner } = await supabaseAdmin
+            .from("profiles")
+            .select("id, team_id")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+
+          if (owner?.team_id) {
+            await supabaseAdmin.from("teams").update({
+              stripe_usage_item_id: usageItemId,
+              current_period_start: periodStart,
+              current_period_end: periodEndTeam
+            }).eq("id", owner.team_id);
+          }
+        }
+
+        // Record subscription event for new subscriptions
+        if (event.type === "customer.subscription.created") {
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("id")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          if (profile?.id) {
+            // Capture plan information (monthly vs annual)
+            const plan = sub.items.data[0]?.price?.recurring?.interval; // 'month' | 'year'
+            await recordEvent(profile.id, "subscribed_pro", { 
+              stripe_sub: sub.id,
+              plan 
+            });
+            
+            // Mark onboarding step as complete
+            await supabaseAdmin.rpc("merge_onboarding_step", { uid: profile.id, k: "upgrade" });
+            
+            // Generate referral code if user doesn't have one yet
+            const { data: prof } = await supabaseAdmin
+              .from("profiles")
+              .select("id, referral_code")
+              .eq("id", profile.id)
+              .maybeSingle();
+            
+            if (!prof?.referral_code) {
+              const crypto = await import("crypto");
+              const code = crypto.randomBytes(5).toString("hex"); // 10-char
+              await supabaseAdmin.from("profiles").update({ referral_code: code }).eq("id", profile.id);
+            }
+            
+            // Create team for new Pro user if they don't have one
+            const { data: existingTeam } = await supabaseAdmin
+              .from("teams")
+              .select("id")
+              .eq("owner_id", profile.id)
+              .maybeSingle();
+              
+            let teamId = existingTeam?.id;
+            if (!teamId) {
+              const { data: createdTeam } = await supabaseAdmin
+                .from("teams")
+                .insert({ name: "My Team", owner_id: profile.id })
+                .select()
+                .single();
+              teamId = createdTeam.id;
+              
+              // Update profile with team_id
+              await supabaseAdmin.from("profiles").update({ team_id: teamId }).eq("id", profile.id);
+              
+              // Add owner to team_members
+              await supabaseAdmin.from("team_members").upsert({ 
+                team_id: teamId, 
+                user_id: profile.id, 
+                role: "owner" 
+              });
+            }
+          }
+        }
         break;
       }
 

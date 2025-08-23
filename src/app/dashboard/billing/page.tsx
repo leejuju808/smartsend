@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { canManageBilling } from "@/utils/permissions";
+import CreditMeter from "@/components/CreditMeter";
+import TimedOffer from "@/components/billing/TimedOffer";
 
 export default function BillingPage() {
   const supabase = createClientComponentClient();
@@ -13,6 +15,7 @@ export default function BillingPage() {
   const [usedSeats, setUsedSeats] = useState<number>(0);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [manageBillingLoading, setManageBillingLoading] = useState(false);
+  const [plan, setPlan] = useState<"monthly"|"annual">("monthly");
 
   useEffect(() => {
     (async () => {
@@ -46,7 +49,11 @@ export default function BillingPage() {
   async function upgradeToPro() {
     setUpgradeLoading(true);
     try {
-      const res = await fetch("/api/billing/checkout", { method: "POST" });
+      const res = await fetch("/api/billing/checkout", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan })
+      });
       const j = await res.json();
       if (j.url) {
         window.location.href = j.url;
@@ -90,6 +97,12 @@ export default function BillingPage() {
     <div className="p-6 max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Billing</h1>
 
+      {/* Credit System */}
+      <CreditMeter />
+
+      {/* Timed Offer - Only show if not pro */}
+      {workspace?.subscription_status !== "pro" && <TimedOffer />}
+
       {/* Current Plan Status */}
       <div className="rounded-2xl border p-5 space-y-4">
         <div className="flex items-center justify-between">
@@ -98,13 +111,25 @@ export default function BillingPage() {
             <div className="text-sm text-gray-600 capitalize">{workspace?.subscription_status || "free"}</div>
           </div>
           {workspace?.subscription_status === "pro" && (
-            <button
-              onClick={manageBilling}
-              disabled={manageBillingLoading}
-              className="px-6 py-3 rounded-xl border font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              {manageBillingLoading ? "Opening..." : "Manage billing"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={manageBilling}
+                disabled={manageBillingLoading}
+                className="px-6 py-3 rounded-xl border font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                {manageBillingLoading ? "Opening..." : "Manage billing"}
+              </button>
+              <button
+                onClick={async () => {
+                  const r = await fetch("/api/billing/portal", { method: "POST" });
+                  const j = await r.json();
+                  if (j.url) window.location.href = j.url;
+                }}
+                className="px-3 py-3 rounded-xl border text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Manage / Switch plan
+              </button>
+            </div>
           )}
         </div>
 
@@ -122,12 +147,39 @@ export default function BillingPage() {
               Unlock campaigns, AI writing, and automations
             </p>
           </div>
+
+          {/* Monthly/Annual Toggle */}
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => setPlan("monthly")}
+              className={`px-3 py-1 rounded border transition-colors ${
+                plan === "monthly" ? "bg-black text-white" : "hover:bg-gray-50"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setPlan("annual")}
+              className={`px-3 py-1 rounded border transition-colors ${
+                plan === "annual" ? "bg-black text-white" : "hover:bg-gray-50"
+              }`}
+            >
+              Annual <span className="ml-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">2 months free</span>
+            </button>
+          </div>
+
+          <p className="text-gray-600 text-sm text-center">
+            {plan === "annual"
+              ? "Pay once, save ~17%. Best for teams who are all-in."
+              : "Pay monthly. Cancel anytime."}
+          </p>
+
           <button
             onClick={upgradeToPro}
             disabled={upgradeLoading}
             className="w-full px-6 py-3 rounded-xl bg-black text-white font-medium disabled:opacity-50 hover:bg-gray-800 transition-colors"
           >
-            {upgradeLoading ? "Redirecting..." : "Upgrade to Pro"}
+            {upgradeLoading ? "Redirecting..." : (plan === "annual" ? "Start Annual Plan →" : "Start Monthly Plan →")}
           </button>
         </div>
       )}

@@ -63,6 +63,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Mark onboarding step as complete
+  try {
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/onboarding/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'send_campaign' })
+    });
+  } catch (e) {
+    // Don't fail the campaign creation if onboarding update fails
+    console.warn('Failed to update onboarding step:', e);
+  }
+
   return NextResponse.json({ ok: true, campaign });
 }
 

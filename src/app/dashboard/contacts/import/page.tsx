@@ -83,6 +83,25 @@ export default function ImportContactsPage() {
         >
           Download CSV template
         </a>
+        <br />
+        <a
+          href="/demo-leads.csv"
+          download
+          onClick={async () => {
+            try {
+              await fetch("/api/onboarding/complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ step: "import_contacts" }),
+              });
+            } catch (e) {
+              console.error("Failed to mark onboarding step:", e);
+            }
+          }}
+          className="inline-block mt-2 text-sm underline text-blue-600"
+        >
+          Download demo CSV
+        </a>
       </div>
 
       {msg && <div className="p-3 rounded border text-sm">{msg}</div>}

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "SmartSendAI",
+  "version": "0.2",
+  "description": "AI-powered email replies for Gmail",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://mail.google.com/*", "https://smartsend.ai/*"],
+  "action": { 
+    "default_popup": "popup.html",
+    "default_title": "SmartSendAI"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*", "https://smartsend.ai/extension/link*"],
+      "js": ["content.js"]
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+} 

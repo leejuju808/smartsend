@@ -11,6 +11,7 @@ SmartSend is a micro-SaaS web application that uses OpenAI to generate compellin
 - 💳 **Subscription Management**: Free trial + $29/month Pro plan
 - 🔐 **Secure Authentication**: Email-based auth with Supabase
 - 📱 **Responsive Design**: Works on desktop and mobile
+- 🔗 **CRM Integrations**: Connect with Salesforce and HubSpot for contact sync and activity logging
 
 ## Tech Stack
 
@@ -71,6 +72,11 @@ SmartSend is a micro-SaaS web application that uses OpenAI to generate compellin
    # App Configuration
    NEXT_PUBLIC_APP_URL=http://localhost:3000
    NEXT_PUBLIC_SITE_URL=http://localhost:3000
+   
+   # Salesforce Integration (Optional)
+   SALESFORCE_CLIENT_ID=your_salesforce_client_id
+   SALESFORCE_CLIENT_SECRET=your_salesforce_client_secret
+   SALESFORCE_LOGIN_BASE=https://login.salesforce.com
    ```
 
 4. **Set up Supabase Database**

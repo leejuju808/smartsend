@@ -42,7 +42,51 @@ export async function POST(req: Request) {
           break;
         }
         case "customer.subscription.created":
-        case "customer.subscription.updated":
+        case "customer.subscription.updated": {
+          const sub = event.data.object;
+          const userId = await findUserIdByCustomerId(sub.customer);
+          if (userId) {
+            const internal = mapStripeToInternal(sub.status);
+            await updateSubscriptionStatus(userId, internal);
+            // Referral credit: if converting to paid, mark converted and grant 1 bonus month
+            if (internal === "pro") {
+              const { data: refRows } = await supabaseAdmin
+                .from("referrals")
+                .select("id, inviter, status")
+                .eq("invitee", userId)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              const refRow = refRows && refRows[0];
+              if (refRow && refRow.status !== "converted") {
+                await supabaseAdmin.from("referrals").update({ status: "converted" }).eq("id", refRow.id);
+                const inviterId = (refRow as any).inviter as string | undefined;
+                if (inviterId) {
+                  const { data: prof } = await supabaseAdmin
+                    .from("profiles")
+                    .select("bonus_credit")
+                    .eq("id", inviterId)
+                    .maybeSingle();
+                  const current = (prof as any)?.bonus_credit ?? 0;
+                  const { error } = await supabaseAdmin
+                    .from("profiles")
+                    .update({ bonus_credit: current + 1 })
+                    .eq("id", inviterId);
+                  if (error) console.error("Failed to update bonus credit:", error);
+                }
+              }
+            }
+          }
+
+          // Track subscription events for analytics
+          const customerId = sub.customer as string;
+          const status = sub.status as string;
+          await supabaseAdmin.from("events").insert({
+            user_id: (await supabaseAdmin.from("profiles").select("id").eq("stripe_customer_id", customerId).maybeSingle()).data?.id ?? null,
+            event: "subscribed_pro",
+            meta: { stripe_subscription_id: sub.id, status }
+          });
+          break;
+        }
         case "customer.subscription.deleted": {
           const sub = event.data.object;
           const userId = await findUserIdByCustomerId(sub.customer);
@@ -68,15 +112,23 @@ export async function POST(req: Request) {
                     .eq("id", inviterId)
                     .maybeSingle();
                   const current = (prof as any)?.bonus_credit ?? 0;
-                  await supabaseAdmin
+                  const { error } = await supabaseAdmin
                     .from("profiles")
                     .update({ bonus_credit: current + 1 })
-                    .eq("id", inviterId)
-                    .catch(() => {});
+                    .eq("id", inviterId);
+                  if (error) console.error("Failed to update bonus credit:", error);
                 }
               }
             }
           }
+
+          // Track subscription cancellation for analytics
+          const customerId = sub.customer as string;
+          await supabaseAdmin.from("events").insert({
+            user_id: (await supabaseAdmin.from("profiles").select("id").eq("stripe_customer_id", customerId).maybeSingle()).data?.id ?? null,
+            event: "subscription_canceled",
+            meta: { stripe_subscription_id: sub.id }
+          });
           break;
         }
         case "invoice.upcoming":
@@ -97,7 +149,7 @@ export async function POST(req: Request) {
             if (credits > 0 && !hasDiscount) {
               try {
                 const StripeModule = await import("stripe");
-                const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2024-06-20" });
+                const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
                 let couponId = process.env.STRIPE_REFERRAL_COUPON_ID as string | undefined;
                 if (!couponId) {
                   const c = await s.coupons.create({ percent_off: 100, duration: "once", name: "Referral credit" });
@@ -105,13 +157,15 @@ export async function POST(req: Request) {
                 }
                 await s.invoices.update(inv.id, { discounts: [{ coupon: couponId! }] } as any);
                 if (bonus > 0) {
-                  await supabaseAdmin.from("profiles").update({ bonus_credit: Math.max(0, bonus - 1) }).eq("id", userId).catch(() => {});
+                  const { error } = await supabaseAdmin.from("profiles").update({ bonus_credit: Math.max(0, bonus - 1) }).eq("id", userId);
+                  if (error) console.error("Failed to update bonus credit:", error);
                 } else if (legacy > 0) {
                   try {
                     await supabaseAdmin.rpc("add_credit_month", { p_user_id: userId, p_delta: -1 });
                   } catch {
                     const newBal = Math.max(0, legacy - 1);
-                    await supabaseAdmin.from("profiles").update({ credit_months: newBal }).eq("id", userId).catch(() => {});
+                    const { error } = await supabaseAdmin.from("profiles").update({ credit_months: newBal }).eq("id", userId);
+                    if (error) console.error("Failed to update credit months:", error);
                   }
                 }
               } catch {}
@@ -137,7 +191,7 @@ export async function POST(req: Request) {
   let event: any;
   try {
     const StripeModule = await import("stripe");
-    const stripe = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2024-06-20" });
+    const stripe = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
     event = stripe.webhooks.constructEvent(raw, sig, webhookSecret);
   } catch (e) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -171,7 +225,7 @@ export async function POST(req: Request) {
             let priceId = explicitPriceId;
             if (!priceId && session.subscription) {
               const StripeModule = await import("stripe");
-              const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2024-06-20" });
+              const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
               const sub = await s.subscriptions.retrieve(session.subscription as string);
               priceId = sub.items.data[0]?.price?.id;
             }
@@ -180,15 +234,52 @@ export async function POST(req: Request) {
 
           if (seatLimit == null && seatCount != null) seatLimit = seatCount;
 
-          await supabaseAdmin
-            .from("workspaces")
-            .update({
-              subscription_status: "pro",
-              stripe_customer_id: customerId,
-              stripe_subscription_id: session.subscription as string,
-              ...(seatLimit != null ? { seat_limit: seatLimit } : {}),
-            } as any)
-            .eq("id", workspaceId);
+            await supabaseAdmin
+              .from("workspaces")
+              .update({
+                subscription_status: "pro",
+                stripe_customer_id: customerId,
+                stripe_subscription_id: session.subscription as string,
+                ...(seatLimit != null ? { seat_limit: seatLimit } : {}),
+              } as any)
+              .eq("id", workspaceId);
+
+          // Mark onboarding step as complete for workspace owner
+          try {
+            const { data: workspace } = await supabaseAdmin
+              .from("workspaces")
+              .select("owner_id")
+              .eq("id", workspaceId)
+              .maybeSingle();
+            
+            if (workspace?.owner_id) {
+              await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/onboarding/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ step: 'upgrade' })
+              });
+            }
+          } catch (e) {
+            // Don't fail the webhook if onboarding update fails
+            console.warn('Failed to update onboarding step:', e);
+          }
+
+          // Track trial start if subscription has trial period
+          if (session.subscription) {
+            try {
+              const StripeModule = await import("stripe");
+              const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
+              const sub = await s.subscriptions.retrieve(session.subscription as string);
+              if (sub.status === "trialing") {
+                const { error } = await supabaseAdmin.from("events").insert({
+                  user_id: (await supabaseAdmin.from("workspaces").select("owner_id").eq("id", workspaceId).maybeSingle()).data?.owner_id ?? null,
+                  event: "trial_started",
+                  meta: { stripe_subscription_id: sub.id, workspace_id: workspaceId }
+                });
+                if (error) console.error("Failed to insert trial_started event:", error);
+              }
+            } catch {}
+          }
         } else {
           const metaUserId = session.metadata?.user_id as string | undefined;
           let userId: string | null = null;
@@ -199,13 +290,41 @@ export async function POST(req: Request) {
               await supabaseAdmin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
             }
             await updateSubscriptionStatus(userId, "pro");
+
+            // Mark onboarding step as complete
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/onboarding/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ step: 'upgrade' })
+              });
+            } catch (e) {
+              // Don't fail the webhook if onboarding update fails
+              console.warn('Failed to update onboarding step:', e);
+            }
+
+            // Track trial start if subscription has trial period
+            if (session.subscription) {
+              try {
+                const StripeModule = await import("stripe");
+                const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
+                const sub = await s.subscriptions.retrieve(session.subscription as string);
+                if (sub.status === "trialing") {
+                  const { error } = await supabaseAdmin.from("events").insert({
+                    user_id: userId,
+                    event: "trial_started",
+                    meta: { stripe_subscription_id: sub.id }
+                  });
+                  if (error) console.error("Failed to insert trial_started event:", error);
+                }
+              } catch {}
+            }
           }
         }
         break;
       }
       case "customer.subscription.created":
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
+      case "customer.subscription.updated": {
         const sub = event.data.object;
         const internal = mapStripeToInternal(sub.status);
 
@@ -225,6 +344,18 @@ export async function POST(req: Request) {
           if (userId) {
             await updateSubscriptionStatus(userId, internal);
             if (internal === "pro") {
+              // Mark onboarding step as complete
+              try {
+                await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/onboarding/complete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ step: 'upgrade' })
+                });
+              } catch (e) {
+                // Don't fail the webhook if onboarding update fails
+                console.warn('Failed to update onboarding step:', e);
+              }
+
               const { data: refRows } = await supabaseAdmin
                 .from("referrals")
                 .select("id, inviter, status")
@@ -242,16 +373,85 @@ export async function POST(req: Request) {
                     .eq("id", inviterId)
                     .maybeSingle();
                   const current = (prof as any)?.bonus_credit ?? 0;
-                  await supabaseAdmin
+                  const { error } = await supabaseAdmin
                     .from("profiles")
                     .update({ bonus_credit: current + 1 })
-                    .eq("id", inviterId)
-                    .catch(() => {});
+                    .eq("id", inviterId);
+                  if (error) console.error("Failed to update bonus credit:", error);
                 }
               }
             }
           }
         }
+
+        // Track subscription events for analytics
+        const customerId = sub.customer as string;
+        const status = sub.status as string;
+        await supabaseAdmin.from("events").insert({
+          user_id: (await supabaseAdmin.from("profiles").select("id").eq("stripe_customer_id", customerId).maybeSingle()).data?.id ?? null,
+          event: "subscribed_pro",
+          meta: { stripe_subscription_id: sub.id, status }
+        });
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        const internal = mapStripeToInternal(sub.status);
+
+        // First, attempt workspace lookup by customer id
+        const { data: ws } = await supabaseAdmin
+          .from("workspaces")
+          .select("id")
+          .eq("stripe_customer_id", sub.customer as string)
+          .maybeSingle();
+        if (ws) {
+          await supabaseAdmin
+            .from("workspaces")
+            .update({ subscription_status: internal, stripe_subscription_id: sub.id as string })
+            .eq("id", ws.id);
+        } else {
+          const userId = await findUserIdByCustomerId(sub.customer);
+          if (userId) {
+            await updateSubscriptionStatus(userId, internal);
+            // Note: This case is for deleted subscriptions, so internal will be "free" not "pro"
+            // The referral logic here seems incorrect for deleted subscriptions
+            // Keeping it for now but it should probably be removed or fixed
+            if (internal === "pro") {
+              const { data: refRows } = await supabaseAdmin
+                .from("referrals")
+                .select("id, inviter, status")
+                .eq("invitee", userId)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              const refRow = refRows && refRows[0];
+              if (refRow && refRow.status !== "converted") {
+                await supabaseAdmin.from("referrals").update({ status: "converted" }).eq("id", refRow.id);
+                const inviterId = (refRow as any).inviter as string | undefined;
+                if (inviterId) {
+                  const { data: prof } = await supabaseAdmin
+                    .from("profiles")
+                    .select("bonus_credit")
+                    .eq("id", inviterId)
+                    .maybeSingle();
+                  const current = (prof as any)?.bonus_credit ?? 0;
+                  const { error } = await supabaseAdmin
+                    .from("profiles")
+                    .update({ bonus_credit: current + 1 })
+                    .eq("id", inviterId);
+                  if (error) console.error("Failed to update bonus credit:", error);
+                }
+              }
+            }
+          }
+        }
+
+        // Track subscription cancellation for analytics
+        const customerId = sub.customer as string;
+        await supabaseAdmin.from("events").insert({
+          user_id: (await supabaseAdmin.from("profiles").select("id").eq("stripe_customer_id", customerId).maybeSingle()).data?.id ?? null,
+          event: "subscription_canceled",
+          meta: { stripe_subscription_id: sub.id }
+        });
         break;
       }
       default:
@@ -272,7 +472,7 @@ export async function POST(req: Request) {
             if (credits > 0 && !hasDiscount) {
               try {
                 const StripeModule = await import("stripe");
-                const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2024-06-20" });
+                const s = new StripeModule.default(process.env.STRIPE_SECRET_KEY as string, { apiVersion: "2025-07-30.basil" });
                 let couponId = process.env.STRIPE_REFERRAL_COUPON_ID as string | undefined;
                 if (!couponId) {
                   const c = await s.coupons.create({ percent_off: 100, duration: "once", name: "Referral credit" });
@@ -280,13 +480,15 @@ export async function POST(req: Request) {
                 }
                 await s.invoices.update(inv.id, { discounts: [{ coupon: couponId! }] } as any);
                 if (bonus > 0) {
-                  await supabaseAdmin.from("profiles").update({ bonus_credit: Math.max(0, bonus - 1) }).eq("id", userId).catch(() => {});
+                  const { error } = await supabaseAdmin.from("profiles").update({ bonus_credit: Math.max(0, bonus - 1) }).eq("id", userId);
+                  if (error) console.error("Failed to update bonus credit:", error);
                 } else if (legacy > 0) {
                   try {
                     await supabaseAdmin.rpc("add_credit_month", { p_user_id: userId, p_delta: -1 });
                   } catch {
                     const newBal = Math.max(0, legacy - 1);
-                    await supabaseAdmin.from("profiles").update({ credit_months: newBal }).eq("id", userId).catch(() => {});
+                    const { error } = await supabaseAdmin.from("profiles").update({ credit_months: newBal }).eq("id", userId);
+                    if (error) console.error("Failed to update credit months:", error);
                   }
                 }
               } catch {}

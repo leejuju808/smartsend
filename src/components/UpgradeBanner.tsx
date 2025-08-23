@@ -1,30 +1,74 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function UpgradeBanner() {
-  const [show, setShow] = useState(false);
+  const [variant, setVariant] = useState<string | null>(null);
+  const [expId, setExpId] = useState<string | null>(null);
 
   useEffect(() => {
-    // We read status from a tiny endpoint to avoid server re-renders everywhere
-    fetch("/api/subscription/status").then(async (r) => {
-      const j = await r.json().catch(() => ({}));
-      if (j?.status !== "pro") setShow(true);
-    }).catch(() => {});
+    fetch("/api/experiments/upgrade_banner")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.variant) setVariant(j.variant);
+        if (j.id) setExpId(j.id);
+        // log view
+        if (j.variant && j.id) {
+          fetch("/api/experiments/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              experiment_id: j.id,
+              variant: j.variant,
+              event: "viewed_banner",
+            }),
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  if (!show) return null;
+  if (!variant) return null;
+
+  const copy = {
+    A: {
+      headline: "🚀 Upgrade to Pro",
+      sub: "Unlock full automation today.",
+      cta: "Upgrade Now",
+    },
+    B: {
+      headline: "💡 Don't leave meetings on the table",
+      sub: "Pro users 2× their booked calls.",
+      cta: "Start Pro →",
+    },
+  }[variant as 'A' | 'B'];
+
+  async function click() {
+    if (expId) {
+      await fetch("/api/experiments/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          experiment_id: expId,
+          variant,
+          event: "clicked_cta",
+        }),
+      });
+    }
+    window.location.href = "/dashboard/billing";
+  }
+
   return (
-    <div className="w-full bg-black text-white text-sm">
-      <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
-        <span className="opacity-90">Unlock campaigns, AI writing, and automations with Pro.</span>
-        <Link
-          href="/dashboard/billing?upgrade=1"
-          className="inline-flex items-center px-3 py-1 rounded bg-white text-black font-medium"
-        >
-          Upgrade →
-        </Link>
+    <div className="w-full bg-yellow-50 border-b border-yellow-200 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <h2 className="font-semibold text-yellow-900">{copy.headline}</h2>
+        <p className="text-sm text-yellow-800">{copy.sub}</p>
       </div>
+      <button
+        onClick={click}
+        className="px-3 py-2 rounded bg-yellow-600 text-white text-sm font-medium hover:bg-yellow-700 transition-colors"
+      >
+        {copy.cta}
+      </button>
     </div>
   );
 } 

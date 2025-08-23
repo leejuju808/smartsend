@@ -19,12 +19,15 @@ import { createClientComponentClient } from '@/lib/supabase'
 import Link from 'next/link'
 import { getUserWithSubscription } from '@/lib/getUserWithSubscription'
 import DailySendsCard from './components/DailySendsCard'
-import DemoSeedButton from './components/DemoSeedButton'
+
 import DashboardMetrics from './components/DashboardMetrics'
 import MonthlyUsageMeter from '@/components/MonthlyUsageMeter'
 import ContactsImporter from '@/components/ContactsImporter'
 import SuppressionManager from '@/components/SuppressionManager'
 import { UpgradeToast } from '@/components/UpgradeToast'
+import OnboardingChecklist from '@/components/OnboardingChecklist'
+import TeamLeaderboard from '@/components/TeamLeaderboard'
+import RoiCard from '@/components/RoiCard'
 
 export default function DashboardPage() {
   const [formData, setFormData] = useState({
@@ -147,13 +150,21 @@ export default function DashboardPage() {
       const res = await fetch('/api/demo/seed', { method: 'POST' })
       if (!res.ok) throw new Error('Failed to seed demo')
       const j = await res.json()
-      setDemoMessage(`Demo ready: ${j.leads} leads, ${j.sends} sends queued.`)
-      // Refresh metrics
-      try {
-        const r2 = await fetch('/api/analytics/summary', { cache: 'no-store' })
-        const j2 = await r2.json()
-        setMetrics({ sent: j2.sent || 0, opened: j2.opened || 0, replied: j2.replied || 0 })
-      } catch {}
+      if (j.ok && j.campaign) {
+        // Mark onboarding step complete
+        try {
+          await fetch("/api/onboarding/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step: "demo_started" }),
+          });
+        } catch {}
+        
+        // Redirect to the campaign page
+        window.location.href = `/dashboard/campaigns/${j.campaign.id}`
+      } else {
+        setDemoMessage('Demo created but failed to get campaign details.')
+      }
     } catch (e) {
       setDemoMessage('Could not launch demo campaign. Please try again.')
     } finally {
@@ -177,15 +188,13 @@ export default function DashboardPage() {
         <div className="mt-6 border rounded-lg p-4 bg-white max-w-xl">
           <div className="font-medium mb-2">Or, see SmartSend in action</div>
           <p className="text-sm text-gray-600 mb-3">Launch a demo campaign that seeds a few leads and instant results.</p>
-          {authUserId ? (
-            <DemoSeedButton
-              userId={authUserId}
-              onDone={(m) => {
-                setDemoDone(true)
-                setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
-              }}
-            />
-          ) : null}
+          <button
+            onClick={handleLaunchDemo}
+            disabled={demoLoading}
+            className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+          >
+            {demoLoading ? "Seeding…" : "Create Demo Campaign"}
+          </button>
           {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
         </div>
       </div>
@@ -197,6 +206,21 @@ export default function DashboardPage() {
       <UpgradeToast />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <MonthlyUsageMeter />
+        
+        {/* ROI Card - show for all authenticated users */}
+        {authUserId && (
+          <div className="mb-6">
+            <RoiCard />
+          </div>
+        )}
+        
+        {/* Onboarding Checklist - only show for non-Pro users */}
+        {authUserId && !isPro && (
+          <div className="mb-6">
+            <OnboardingChecklist />
+          </div>
+        )}
+        
         {authUserId ? (
           <DailySendsCard userId={authUserId} />
         ) : null}
@@ -204,21 +228,26 @@ export default function DashboardPage() {
         {authUserId ? (
           <DashboardMetrics userId={authUserId} onZeroState={() => {}} />
         ) : null}
+        
+        {/* Team Leaderboard - only show for Pro teams */}
+        {authUserId && isPro ? (
+          <div className="mt-6">
+            <TeamLeaderboard />
+          </div>
+        ) : null}
         <div className="border rounded-lg p-4 bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-medium">Instant Demo</div>
-              <div className="text-sm text-gray-600">Seed a demo campaign to see metrics immediately.</div>
+              <div className="font-medium">Welcome to SmartSendAI</div>
+              <div className="text-sm text-gray-600">Get started by creating a demo campaign with sample data.</div>
             </div>
-            {authUserId ? (
-              <DemoSeedButton
-                userId={authUserId}
-                onDone={(m) => {
-                  setDemoDone(true)
-                  setMetrics({ sent: m.sent, opened: m.open, replied: m.reply })
-                }}
-              />
-            ) : null}
+            <button
+              onClick={handleLaunchDemo}
+              disabled={demoLoading}
+              className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+            >
+              {demoLoading ? "Seeding…" : "Create Demo Campaign"}
+            </button>
           </div>
           {demoMessage && <div className="mt-3 text-sm text-gray-800">{demoMessage}</div>}
         </div>

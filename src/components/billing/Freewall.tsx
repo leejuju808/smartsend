@@ -49,16 +49,35 @@ export default function Freewall({ kind = 'demo', children, className }: Props) 
       <div className="rounded-2xl border p-6 bg-white space-y-3">
         <h3 className="text-lg font-semibold">{copy.title}</h3>
         <p className="text-sm text-slate-600">{copy.sub(state.used, state.quota)}</p>
-        <div className="w-48">
+        <div className="flex gap-2">
           <button
             type="button"
             onClick={() => {
               trackClient('upgrade_cta_clicked', { surface: 'freewall', variant })
               window.location.href = '/api/stripe/checkout?interval=monthly'
             }}
-            className="px-4 py-2 w-full rounded bg-black text-white disabled:opacity-50"
+            className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
           >
             Start for $1
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const r = await fetch("/api/billing/topup", {
+                  method:"POST",
+                  headers:{ "Content-Type":"application/json" },
+                  body: JSON.stringify({ pack: "200" })
+                });
+                const j = await r.json();
+                if (j.url) window.location.href = j.url;
+              } catch (error) {
+                console.error('Failed to create topup session:', error);
+              }
+            }}
+            className="px-4 py-2 rounded border hover:bg-gray-50"
+          >
+            Buy 200 credits
           </button>
         </div>
       </div>

@@ -46,6 +46,22 @@ export async function POST(req: Request) {
     if (!recips || recips.length === 0) {
       // complete campaign
       await supabaseAdmin.from("campaigns").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", camp.id);
+      
+      // Mark onboarding step as complete for the first campaign completion
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("id")
+          .eq("id", camp.user_id)
+          .maybeSingle();
+        if (profile?.id) {
+          await supabaseAdmin.rpc("merge_onboarding_step", { uid: profile.id, k: "send_campaign" });
+        }
+      } catch (e) {
+        // Don't fail the campaign completion if onboarding update fails
+        console.warn('Failed to update onboarding step:', e);
+      }
+      
       continue;
     }
 

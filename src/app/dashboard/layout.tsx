@@ -26,6 +26,12 @@ import UpgradeNudgeModal from '@/components/billing/UpgradeNudgeModal'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
 import UpgradeBanner from '@/components/UpgradeBanner'
 import TrialBadge from '@/components/TrialBadge'
+import DemoTourBanner from '@/components/DemoTourBanner'
+import UpgradeCelebration from '@/components/UpgradeCelebration'
+import UsageBadgeClient from '@/components/UsageBadgeClient'
+import AnnualNudge from '@/components/AnnualNudge'
+import UpgradeWall from '@/components/UpgradeWall'
+import DomainNudge from '@/components/DomainNudge'
 
 export default function DashboardLayout({
   children,
@@ -102,6 +108,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <UpgradeCelebration />
       {/* Mobile sidebar */}
       <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
@@ -125,6 +132,13 @@ export default function DashboardLayout({
             >
               <BarChart3 className="mr-3 h-5 w-5" />
               Overview
+            </Link>
+            <Link
+              href="/dashboard/analytics"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Activity className="mr-3 h-5 w-5" />
+              Analytics
             </Link>
             <Link
               href="/dashboard"
@@ -160,6 +174,13 @@ export default function DashboardLayout({
             >
               <User className="mr-3 h-5 w-5" />
               Account
+            </Link>
+            <Link
+              href="/dashboard/settings"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Settings className="mr-3 h-5 w-5" />
+              Settings
             </Link>
             {canManageBilling(myRole) && (
               <Link
@@ -248,6 +269,13 @@ export default function DashboardLayout({
               Overview
             </Link>
             <Link
+              href="/dashboard/analytics"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Activity className="mr-3 h-5 w-5" />
+              Analytics
+            </Link>
+            <Link
               href="/dashboard"
               className="flex items-center px-2 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-100"
             >
@@ -319,6 +347,20 @@ export default function DashboardLayout({
               <Users className="mr-3 h-5 w-5" />
               Team
             </Link>
+            <Link
+              href="/dashboard/account"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <User className="mr-3 h-5 w-5" />
+              Account
+            </Link>
+            <Link
+              href="/dashboard/settings"
+              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Settings className="mr-3 h-5 w-5" />
+              Settings
+            </Link>
           </nav>
           <div className="border-t border-gray-200 p-4">
             <div className="flex items-center">
@@ -347,6 +389,9 @@ export default function DashboardLayout({
       {/* Main content */}
       <div className="lg:pl-64">
         <UpgradeBanner />
+        <AnnualNudge />
+        <DemoTourBanner />
+        <DomainNudge />
         <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
           <button
             type="button"
@@ -361,8 +406,9 @@ export default function DashboardLayout({
           <div className="ml-auto flex items-center gap-2">
             <TrialBadge />
             {ready && (
-              <span className="text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Ready to Launch ✅</span>
+              <span className="text-xs rounded-full bg-green-100 text-blue-700 px-2 py-1">Ready to Launch ✅</span>
             )}
+            {user && <UsageBadgeClient userId={user.id} />}
           </div>
         </div>
 
@@ -381,6 +427,7 @@ export default function DashboardLayout({
         </main>
         <FeedbackWidget />
         <UpgradeNudgeModal />
+        <UpgradeWall />
       </div>
     </div>
   )

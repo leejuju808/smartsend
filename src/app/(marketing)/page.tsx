@@ -1,3 +1,5 @@
+import WaitlistForm from "./WaitlistForm";
+
 export default function HomePage() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-24 text-center space-y-8">
@@ -16,6 +18,7 @@ export default function HomePage() {
           Log In
         </a>
       </div>
+      <WaitlistForm />
     </div>
   );
 } 

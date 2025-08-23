@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ReferralCard from '@/components/ReferralCard'
 
 export default function OverviewPage() {
   const supabase = createClientComponentClient()
@@ -51,6 +52,11 @@ export default function OverviewPage() {
             Upgrade your plan and manage subscription settings.
           </p>
         </div>
+      </div>
+
+      {/* Referral Card */}
+      <div className="mt-10">
+        <ReferralCard />
       </div>
     </div>
   )

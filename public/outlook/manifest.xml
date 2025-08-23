@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:type="MessageReadCommandSurface">
+  <Id>e9f0f5a8-4d0a-4b3e-9f5b-8b5e1f9d1111</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>SmartSendAI</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="SmartSendAI for Outlook"/>
+  <Description DefaultValue="AI-powered reply assistant & quick meeting inserts."/>
+  <IconUrl DefaultValue="https://yourdomain.com/outlook/icon.svg"/>
+  <HighResolutionIconUrl DefaultValue="https://yourdomain.com/outlook/icon-128.svg"/>
+  <SupportUrl DefaultValue="https://yourdomain.com/support"/>
+
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+
+  <Requirements>
+    <Sets DefaultMinVersion="1.8">
+      <Set Name="Mailbox"/>
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://yourdomain.com/outlook/taskpane.html"/>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteMailbox</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+
+  <Extensions>
+    <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+      <OfficeTab id="TabDefault">
+        <Group id="SmartSendAI.Group" label="SmartSendAI">
+          <Control xsi:type="Button" id="SmartSendAI.OpenPane"
+                   label="Smart Reply"
+                   icon="https://yourdomain.com/outlook/icon.svg"
+                   onAction="functionFile.openPane"
+                   superTip="Open SmartSendAI assistant"/>
+          <Control xsi:type="Button" id="SmartSendAI.InsertMeeting"
+                   label="Insert Meeting"
+                   icon="https://yourdomain.com/outlook/icon.svg"
+                   onAction="functionFile.insertMeeting"
+                   superTip="Insert meeting options + .ics"/>
+        </Group>
+      </OfficeTab>
+    </ExtensionPoint>
+  </Extensions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <Runtimes>
+          <Runtime resid="Taskpane.Url" lifetime="long" />
+          <Runtime resid="Functions.Url" lifetime="short" />
+        </Runtimes>
+        <DesktopFormFactor>
+          <FunctionFile resid="Functions.Url"/>
+          <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="VOGroup" label="SmartSendAI">
+                <Control xsi:type="Button" id="VO.OpenPane"
+                         label="Smart Reply"
+                         icon="https://yourdomain.com/outlook/icon.svg"
+                         onAction="openPane"
+                         superTip="Open SmartSendAI assistant"/>
+                <Control xsi:type="Button" id="VO.InsertMeeting"
+                         label="Insert Meeting"
+                         icon="https://yourdomain.com/outlook/icon.svg"
+                         onAction="insertMeeting"
+                         superTip="Insert meeting options + .ics"/>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+      <bt:Urls xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:Url id="Taskpane.Url" DefaultValue="https://yourdomain.com/outlook/taskpane.html"/>
+        <bt:Url id="Functions.Url" DefaultValue="https://yourdomain.com/outlook/functions.html"/>
+      </bt:Urls>
+      <bt:ShortStrings xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+      <bt:LongStrings xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp> 
