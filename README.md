@@ -1,245 +1,140 @@
-# SmartSend - AI-Powered Cold Email Generator
+# SmartSend AI — Cold Email Copilot
 
-SmartSend is a micro-SaaS web application that uses OpenAI to generate compelling cold emails for businesses. Built with Next.js, Supabase, and Stripe.
+**North Star:** `MB/100 = Meetings Booked per 100 Replies`  
+**Company Goal:** $1M ARR. Every slice should increase MB/100 and paid conversions.
 
-## Features
+---
 
-- 🤖 **AI-Powered Email Generation**: Generate 3 unique cold email drafts using OpenAI
-- 🎯 **Personalized Content**: Target specific audiences and industries
-- 🎨 **Multiple Tones**: Choose from professional, casual, friendly, or formal tones
-- 📧 **Email History**: Save and manage your generated emails
-- 💳 **Subscription Management**: Free trial + $29/month Pro plan
-- 🔐 **Secure Authentication**: Email-based auth with Supabase
-- 📱 **Responsive Design**: Works on desktop and mobile
-- 🔗 **CRM Integrations**: Connect with Salesforce and HubSpot for contact sync and activity logging
+## Product Wedge (v1)
+1. **Reply-Intent Detector → Auto Calendar Insert**
+   - Intents: `meeting`, `positive`, `neutral`, `not_interested`, `unsubscribe`, `complaint`, `bounce_hard`, `bounce_soft`
+   - Auto ICS + Calendly on `meeting`
+   - **Auto-suppress negatives**: `unsubscribe`, `complaint`, `bounce_hard`
 
-## Tech Stack
+2. **CSV Import → Dedupe → Suppression Guard**
+   - Column mapping UI
+   - In-file dedupe, invalid email skip
+   - Skip existing contacts, skip suppressed (global & per-campaign)
+   - Summary counts + sample errors
 
-- **Frontend**: Next.js 14, TypeScript, Tailwind CSS
-- **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **AI**: OpenAI GPT-4
-- **Payments**: Stripe
-- **Icons**: Lucide React
+3. **Send Safety**
+   - Global suppressions (`suppressions`) + per-campaign suppressions (`campaign_suppressions`)
+   - Helper: `is_suppressed(workspace, email, campaign?)`
+   - **Next:** Pre-send guard (visible alert + counts)
 
-## Getting Started
+4. **Lite Analytics**
+   - MB/100 spotlight
+   - Replies → meetings %
+   - Basic sender health
 
-### Prerequisites
+---
 
-- Node.js 18+ 
-- npm or yarn
-- Supabase account
-- OpenAI API key
-- Stripe account (for payments)
+## Tech Stack (non-negotiable)
+- **Next.js 14+ App Router**, TypeScript, Tailwind, shadcn/ui, lucide-react
+- **Supabase** (Postgres + Auth + RLS)
+- **Stripe** (Checkout, Billing, Webhooks) with `profiles.subscription_status`
+- **Vercel** deployment
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd smartsend-ai
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   Create a `.env.local` file in the root directory:
-   ```env
-   # Supabase Configuration
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-   # OpenAI Configuration
-   OPENAI_API_KEY=your_openai_api_key
-
-   # Stripe Configuration
-   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
-   STRIPE_SECRET_KEY=your_stripe_secret_key
-   STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
-   # Optional: bundled plan price IDs (Starter/Team/Pro)
-   NEXT_PUBLIC_STRIPE_PRICE_STARTER=price_starter
-   NEXT_PUBLIC_STRIPE_PRICE_TEAM=price_team
-   NEXT_PUBLIC_STRIPE_PRICE_PRO=price_pro
-   # Optional: base+seat pricing (fallback)
-   STRIPE_BASE_PRICE_ID=price_base
-   STRIPE_SEAT_PRICE_ID=price_seat
-
-   # App Configuration
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
-   NEXT_PUBLIC_SITE_URL=http://localhost:3000
-   
-   # Salesforce Integration (Optional)
-   SALESFORCE_CLIENT_ID=your_salesforce_client_id
-   SALESFORCE_CLIENT_SECRET=your_salesforce_client_secret
-   SALESFORCE_LOGIN_BASE=https://login.salesforce.com
-   ```
-
-4. **Set up Supabase Database**
-   
-   Create the following tables in your Supabase database:
-
-   ```sql
-   -- Users table (extends Supabase auth.users)
-   CREATE TABLE public.users (
-     id UUID REFERENCES auth.users(id) PRIMARY KEY,
-     email TEXT NOT NULL,
-     subscription_status TEXT DEFAULT 'free',
-     stripe_customer_id TEXT,
-     email_credits INTEGER DEFAULT 5,
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-
-   -- Email templates table
-   CREATE TABLE public.email_templates (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-     target_audience TEXT NOT NULL,
-     product_service TEXT NOT NULL,
-     tone TEXT NOT NULL,
-     generated_emails TEXT NOT NULL,
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-
-   -- Subscriptions table
-   CREATE TABLE public.subscriptions (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-     stripe_subscription_id TEXT UNIQUE NOT NULL,
-     status TEXT NOT NULL,
-     current_period_end TIMESTAMP WITH TIME ZONE,
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-
-   -- Enable Row Level Security
-   ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-   ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
-   ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
-
-   -- Create policies
-   CREATE POLICY "Users can view own profile" ON public.users
-     FOR SELECT USING (auth.uid() = id);
-
-   CREATE POLICY "Users can update own profile" ON public.users
-     FOR UPDATE USING (auth.uid() = id);
-
-   CREATE POLICY "Users can view own email templates" ON public.email_templates
-     FOR ALL USING (auth.uid() = user_id);
-
-   CREATE POLICY "Users can view own subscriptions" ON public.subscriptions
-     FOR ALL USING (auth.uid() = user_id);
-   ```
-
-5. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-6. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## Project Structure
-
+**Env placeholders (do not hardcode secrets):**
 ```
-src/
-├── app/                    # Next.js app directory
-│   ├── api/               # API routes
-│   ├── auth/              # Auth callback
-│   ├── dashboard/         # Dashboard pages
-│   ├── login/             # Login page
-│   ├── signup/            # Signup page
-│   ├── globals.css        # Global styles
-│   ├── layout.tsx         # Root layout
-│   └── page.tsx           # Landing page
-├── lib/                   # Utility libraries
-│   ├── openai.ts          # OpenAI client
-│   ├── supabase.ts        # Supabase client
-│   ├── stripe.ts          # Stripe client
-│   └── utils.ts           # Utility functions
-└── types/                 # TypeScript types
-    └── database.ts        # Database types
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+STRIPE_SECRET_KEY=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PRICE_ID=
+INTERNAL_API_KEY=
 ```
 
-## Key Features Implementation
+---
 
-### Email Generation
-- Uses OpenAI GPT-4 to generate 3 different cold email approaches
-- Saves generated emails to Supabase database
-- Supports multiple tones and target audiences
+## Data Model (current)
+- `profiles` — user profile with `workspace_id`, `subscription_status`, `auto_suppress_negatives` (default `true`)
+- `contacts` — unique by `(workspace_id, lower(email))`
+- `suppressions` — global; unique by `(workspace_id, lower(email))`; reasons: `unsubscribed | complaint | bounced | manual | role_account | invalid_format`
+- `campaigns` — campaign metadata
+- `campaign_suppressions` — unique by `(campaign_id, lower(email))`
+- `meetings` — tracks bookings for MB/100
+- `messages` — raw/send/reply metadata (as needed)
 
-### Authentication
-- Email-based authentication with Supabase
-- Protected routes and API endpoints
-- User session management
+Helper:
+```sql
+SELECT public.is_suppressed(workspace_id, 'user@example.com', campaign_id);
+```
 
-### Subscription Management
-- Free trial with 5 email generations
-- Pro plan with unlimited generations
-- Stripe integration for payments
+---
 
-### Email History
-- View all previously generated emails
-- Copy emails to clipboard
-- Delete unwanted templates
+## What's Shipped
+- CSV Import API + UI with dedupe & suppression guard
+- Auto-suppress on negative reply intents
+- Reply-intent mapping + hook for calendar insert (meeting)
+- RLS policies scoped by workspace_id
 
-## Deployment
+---
 
-### Vercel (Recommended)
+## Next Slices (Ship Order)
+1. **Pre-send Suppression Guard**
+   - When launching a send, compute counts of suppressed/invalid recipients
+   - Show blocking alert with "Fix list" CTA
+   - Only allow send if blocked contacts are excluded
 
-1. Push your code to GitHub
-2. Connect your repository to Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy
+2. **Role-Account Filter on Import**
+   - Detect info@, admin@, sales@, support@, no-reply@, etc.
+   - Auto-insert into suppressions with reason='role_account'
+   - Toggle in settings
 
-### Other Platforms
+3. **Analytics Polish**
+   - Trendline for sender health
+   - Replies→Meetings funnel
 
-The app can be deployed to any platform that supports Next.js:
-- Netlify
-- Railway
-- DigitalOcean App Platform
-- AWS Amplify
+---
 
-## Environment Variables
+## Engineering Rules of the Road
+- App Router only under `/app/**`. No `/pages/**`.
+- Full file content in PRs; include SQL + RLS if schema changes.
+- Add a Run/Verify section with CLI steps + acceptance checks.
+- Prefer small, ROI-stacking slices; ship daily.
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key | Yes |
-| `OPENAI_API_KEY` | Your OpenAI API key | Yes |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Your Stripe publishable key | Yes |
-| `STRIPE_SECRET_KEY` | Your Stripe secret key | Yes |
-| `STRIPE_WEBHOOK_SECRET` | Your Stripe webhook secret | Yes |
-| `NEXT_PUBLIC_APP_URL` | Your app's URL | Yes |
+---
 
-## Contributing
+## Run/Verify (local)
+```bash
+# Install
+pnpm i
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+# Env
+cp .env.local.example .env.local  # or create .env.local and fill placeholders
 
-## License
+# Dev
+pnpm dev
 
-This project is licensed under the MIT License.
+# Check: CSV Import page
+# Visit http://localhost:3000/import
+# Import a CSV with Email column -> see summary counts.
 
-## Support
+# Check: Auto-suppress negatives
+# POST /api/replies/handle-intent with INTERNAL_API_KEY header and body:
+# { "workspaceId":"<uuid>", "email":"optout@example.com", "intent":"unsubscribe" }
+# Verify row in public.suppressions.
 
-For support, email support@smartsend.ai or create an issue in this repository.
+# (After adding pre-send guard)
+# Launch a test send; verify blocked suppressed count + alert.
+```
 
-## Roadmap
+---
 
-- [ ] Advanced email templates
-- [ ] Email analytics and tracking
-- [ ] Bulk email generation
-- [ ] Integration with email providers
-- [ ] Team collaboration features
-- [ ] API for third-party integrations
+## Run/Verify (what to do right now)
+
+```bash
+# 1) Add the README
+mkdir -p docs
+git add README.md
+git commit -m "docs: lock SmartSend AI scope (MB/100, wedge, stack, next slices)"
+
+# 2) Paste the System Prompt (above) into Cursor > Project Instructions
+
+# 3) Acceptance check
+# - Cursor should echo back the constraints when asked:
+#   "What's our North Star and next slice?" → It should say MB/100 and Pre-send guard.
+```
