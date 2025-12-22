@@ -1,132 +1,79 @@
-import 'server-only'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import crypto from 'crypto'
+import { cookies } from "next/headers";
+import { createSupabaseServer } from "@/lib/supabaseServer";
+import { createServerClient } from '@supabase/ssr';
 
-function admin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  return createClient(url, key, { auth: { persistSession: false } })
+// Server-side Supabase client with SSR support
+export async function serverSB() {
+  const cookieStore = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
 }
 
-function userClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  const jar = cookies()
-  return createServerClient(url, anon, {
-    cookies: {
-      get: (n: string) => jar.get(n)?.value,
-      set() {},
-      remove() {},
-    },
-  })
+export function getActiveOrgId() {
+  return cookies().get("org_id")?.value || null;
 }
 
-export async function getOrCreateDefaultOrgForUser() {
-  const supabase = userClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null, org: null }
-  const sb = admin()
-  const { data: prof } = await sb.from('profiles').select('id, org_id, email').eq('id', user.id).maybeSingle()
-  if ((prof as any)?.org_id) {
-    const { data: org } = await sb.from('orgs').select('id,name,owner_id').eq('id', (prof as any).org_id).maybeSingle()
-    return { user, org }
+export function setActiveOrgId(res: Response, orgId: string) {
+  // in your api route, set cookie via NextResponse
+}
+
+export type ActiveOrg = { id: string; name: string; role: "owner" | "admin" | "member" };
+
+// Get current org using RPC function
+export async function getCurrentOrg(): Promise<string | null> {
+  const sb = await serverSB();
+  const { data, error } = await sb.rpc('fn_current_org');
+  if (error || !data) return null;
+  return data;
+}
+
+// List all orgs user is a member of
+export async function listMyOrgs(): Promise<Array<{ id: string; name: string; role: string; is_current: boolean }>> {
+  const sb = await serverSB();
+  const { data, error } = await sb.rpc('fn_list_my_orgs');
+  if (error || !data) return [];
+  return data;
+}
+
+// Switch to a different org
+export async function switchOrg(orgId: string): Promise<boolean> {
+  const sb = await serverSB();
+  const { error } = await sb.rpc('fn_set_current_org', { p_org_id: orgId });
+  return !error;
+}
+
+export async function getActiveOrg(): Promise<ActiveOrg | null> {
+  const orgId = await getCurrentOrg();
+  if (!orgId) return null;
+  
+  const supabase = createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // Get org details
+  const { data: membership } = await supabase
+    .from("org_members")
+    .select("org_id, role, orgs!inner(id, name)")
+    .eq("org_id", orgId)
+    .eq("user_id", user.id)
+    .single();
+  
+  if (membership) {
+    return {
+      id: membership.org_id,
+      name: (membership.orgs as any).name,
+      role: membership.role as "owner" | "admin" | "member"
+    };
   }
-  const name = (prof as any)?.email ? `${(prof as any).email.split('@')[0]}'s Team` : 'My Team'
-  const { data: org, error } = await sb.from('orgs').insert({ name, owner_id: user.id }).select('*').single()
-  if (error) throw error
-  await sb.from('org_members').insert({ org_id: (org as any).id, user_id: user.id, role: 'owner' })
-  await sb.from('profiles').update({ org_id: (org as any).id }).eq('id', user.id)
-  return { user, org }
-}
 
-export async function countSeats(orgId: string) {
-  const sb = admin()
-  const { count } = await sb.from('org_members').select('*', { head: true, count: 'exact' }).eq('org_id', orgId)
-  return (count ?? 0) || 0
-}
-
-export function makeInviteToken() {
-  return crypto.randomBytes(24).toString('hex')
-}
-
-export async function requireOrgRole(orgId: string, userId: string, roles: Array<'owner' | 'admin'> = ['owner', 'admin']) {
-  const sb = admin()
-  const { data: row } = await sb
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .maybeSingle()
-  const role = (row as any)?.role as string | undefined
-  if (!role || !roles.includes(role as any)) {
-    throw new Error('forbidden')
-  }
-}
-
-export async function seatLimitForOrg(orgId: string): Promise<number | null> {
-  const sb = admin()
-  const { data: org } = await sb.from('orgs').select('owner_id').eq('id', orgId).maybeSingle()
-  const ownerId = (org as any)?.owner_id as string | undefined
-  if (!ownerId) return 1
-  const { data: prof } = await sb.from('profiles').select('subscription_status').eq('id', ownerId).maybeSingle()
-  const status = (prof as any)?.subscription_status as string | undefined
-  const freeLimit = Number(process.env.ORG_FREE_SEAT_LIMIT ?? 1)
-  const proLimitEnv = process.env.ORG_PRO_SEAT_LIMIT
-  const proLimit = proLimitEnv != null ? Number(proLimitEnv) : null
-  const isPro = status === 'pro' || status === 'active' || status === 'trialing'
-  return isPro ? (Number.isFinite(proLimit as any) && (proLimit as any) > 0 ? (proLimit as any) : null) : Math.max(1, freeLimit)
-}
-
-export async function seatLimitForOrg(_orgId: string): Promise<number | null> {
-  const raw = process.env.PRO_SEAT_LIMIT
-  if (raw == null || raw === '') return null
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1
-}
-
-export async function getMembership(orgId: string, userId: string) {
-  const sb = admin()
-  const { data } = await sb
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .maybeSingle()
-  return (data as any)?.role as string | undefined
-}
-
-export async function requireOrgRole(orgId: string, userId: string, allowed: Array<'owner' | 'admin'> = ['owner', 'admin']) {
-  const role = await getMembership(orgId, userId)
-  if (!role || !allowed.includes((role as any) || 'member')) {
-    throw new Error('forbidden')
-  }
-  return role
-}
-
-
-  return status === 'pro' || status === 'active' || status === 'trialing' || status === 'past_due'
-}
-
-/**
- * Seat limit for an org (null = unlimited).
- * FREE_SEAT_LIMIT (default 1)
- * PRO_SEAT_LIMIT (default unlimited if unset)
- */
-export async function seatLimitForOrg(orgId: string): Promise<number | null> {
-  const sb = admin()
-  const { data: org } = await sb.from('orgs').select('owner_id').eq('id', orgId).maybeSingle()
-  if (!(org as any)?.owner_id) return 1
-  const { data: owner } = await sb.from('profiles').select('subscription_status').eq('id', (org as any).owner_id).maybeSingle()
-  const status = (owner as any)?.subscription_status as string | undefined
-  if (isProLike(status)) {
-    const raw = process.env.PRO_SEAT_LIMIT
-    if (!raw || String(raw).trim() === '') return null
-    const n = Number(raw)
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
-  }
-  const raw = process.env.FREE_SEAT_LIMIT
-  const n = Number(raw ?? 1)
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1
+  return null;
 }

@@ -1,69 +1,111 @@
 "use client"
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@/lib/supabase'
 
-type Deal = {
+type Contact = {
   id: string
-  name: string
-  stage: 'Contacted'|'Replied'|'Demo Scheduled'|'Proposal Sent'|'Closed Won'|'Closed Lost'
-  value: number | null
-  contact_id: string | null
+  email: string
+  first_name?: string
+  last_name?: string
+  company?: string
+  created_at: string
+  pipeline_stage_id?: string
 }
 
-const STAGES: Deal['stage'][] = ['Contacted','Replied','Demo Scheduled'|'Proposal Sent'|'Closed Won'|'Closed Lost']
+type PipelineStage = {
+  id: string
+  name: string
+  order_index: number
+  contacts: Contact[]
+}
 
 export default function PipelineClient() {
   const supabase = createClientComponentClient()
-  const [deals, setDeals] = useState<Deal[]>([])
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const [stages, setStages] = useState<PipelineStage[]>([])
+  const [pipelineId, setPipelineId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
   useEffect(() => {
-    const active = typeof window !== 'undefined' ? localStorage.getItem('active_workspace') : null
-    setWorkspaceId(active)
+    const loadDefaultPipeline = async () => {
+      try {
+        const response = await fetch('/api/pipeline/default')
+        if (response.ok) {
+          const pipeline = await response.json()
+          setPipelineId(pipeline.id)
+        }
+      } catch (error) {
+        console.error('Failed to load default pipeline:', error)
+      }
+    }
+    loadDefaultPipeline()
   }, [])
 
   useEffect(() => {
-    const load = async () => {
-      if (!workspaceId) { setLoading(false); return }
-      const { data } = await supabase
-        .from('deals')
-        .select('id,name,stage,value,contact_id, contacts:contact_id(name,company,lead_score)')
-        .eq('workspace_id', workspaceId)
-      setDeals((data || []) as any)
-      setLoading(false)
+    const loadStages = async () => {
+      if (!pipelineId) return
+      
+      try {
+        const response = await fetch(`/api/pipeline/${pipelineId}/stages`)
+        if (response.ok) {
+          const data = await response.json()
+          setStages(data)
+        }
+      } catch (error) {
+        console.error('Failed to load stages:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-    load()
-  }, [supabase, workspaceId])
+    
+    loadStages()
+  }, [pipelineId])
 
-  const byStage = useMemo(() => {
-    const map: Record<string, Deal[]> = {}
-    for (const s of STAGES) map[s] = []
-    for (const d of deals) (map[d.stage] ||= []).push(d)
-    return map
-  }, [deals])
+  const moveContact = async (contactId: string, newStageId: string) => {
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_id: newStageId })
+      })
+      
+      if (response.ok) {
+        // Reload stages to get updated data
+        if (pipelineId) {
+          const response = await fetch(`/api/pipeline/${pipelineId}/stages`)
+          if (response.ok) {
+            const data = await response.json()
+            setStages(data)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to move contact:', error)
+    }
+  }
 
-  const onDrop = async (dealId: string, newStage: Deal['stage']) => {
-    if (!workspaceId) return
-    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage } : d))
-    await supabase.from('deals').update({ stage: newStage }).eq('id', dealId)
+  const onDrop = async (contactId: string, newStageId: string) => {
+    await moveContact(contactId, newStageId)
   }
 
   if (loading) return <div className="text-sm text-gray-500">Loading pipeline…</div>
+  if (!pipelineId) return <div className="text-sm text-gray-500">No pipeline found</div>
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-4">Pipeline</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        {STAGES.map(stage => (
+      <h1 className="text-2xl font-bold mb-1">Jobs Pipeline</h1>
+      <div className="text-sm text-gray-600 mb-4">Hot → Booked → Closed</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 overflow-x-auto">
+        {stages.map(stage => (
           <Column
-            key={stage}
-            title={stage}
-            items={byStage[stage] || []}
-            onDrop={(id) => onDrop(id, stage)}
+            key={stage.id}
+            title={stage.name}
+            items={stage.contacts || []}
+            onDrop={(id) => onDrop(id, stage.id)}
             draggingId={draggingId}
             setDraggingId={setDraggingId}
+            onMoveContact={moveContact}
+            allStages={stages}
           />
         ))}
       </div>
@@ -71,16 +113,26 @@ export default function PipelineClient() {
   )
 }
 
-function Column({ title, items, onDrop, draggingId, setDraggingId }: {
+function Column({ 
+  title, 
+  items, 
+  onDrop, 
+  draggingId, 
+  setDraggingId,
+  onMoveContact,
+  allStages
+}: {
   title: string
-  items: Deal[]
+  items: Contact[]
   onDrop: (id: string) => void
   draggingId: string | null
   setDraggingId: (id: string | null) => void
+  onMoveContact: (contactId: string, stageId: string) => Promise<void>
+  allStages: PipelineStage[]
 }) {
   return (
     <div
-      className="bg-white rounded-lg border p-3 min-h-[300px]"
+      className="bg-white rounded-lg border p-3 min-h-[300px] min-w-[250px]"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
@@ -88,43 +140,72 @@ function Column({ title, items, onDrop, draggingId, setDraggingId }: {
         if (id) onDrop(id)
       }}
     >
-      <div className="text-sm font-semibold mb-2">{title} <span className="text-gray-400">({items.length})</span></div>
+      <div className="text-sm font-semibold mb-3 text-gray-700">
+        {title} <span className="text-gray-400">({items.length})</span>
+      </div>
       <div className="space-y-2">
-        {items.map(d => (
-          <Card key={d.id} deal={d} draggingId={draggingId} setDraggingId={setDraggingId} />
+        {items.map(contact => (
+          <Card 
+            key={contact.id} 
+            contact={contact} 
+            draggingId={draggingId} 
+            setDraggingId={setDraggingId}
+            onMoveContact={onMoveContact}
+            allStages={allStages}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function Card({ deal, draggingId, setDraggingId }: {
-  deal: Deal
+function Card({ 
+  contact, 
+  draggingId, 
+  setDraggingId,
+  onMoveContact,
+  allStages
+}: {
+  contact: Contact
   draggingId: string | null
   setDraggingId: (id: string | null) => void
+  onMoveContact: (contactId: string, stageId: string) => Promise<void>
+  allStages: PipelineStage[]
 }) {
-  const c: any = (deal as any).contacts || null
+  const displayName = contact.first_name && contact.last_name 
+    ? `${contact.first_name} ${contact.last_name}`
+    : contact.first_name || contact.last_name || contact.email.split('@')[0]
+
   return (
     <div
       draggable
       onDragStart={(e) => {
-        setDraggingId(deal.id)
-        e.dataTransfer.setData('text/plain', deal.id)
+        setDraggingId(contact.id)
+        e.dataTransfer.setData('text/plain', contact.id)
       }}
       onDragEnd={() => setDraggingId(null)}
-      className={`bg-white border rounded p-2 cursor-move hover:shadow-sm ${
-        draggingId === deal.id ? 'opacity-50' : ''
+      className={`bg-white border rounded-lg p-3 cursor-move hover:shadow-sm transition-shadow ${
+        draggingId === contact.id ? 'opacity-50' : ''
       }`}
     >
-      <div className="font-medium text-sm">{deal.name}</div>
-      {c && (
-        <div className="text-xs text-gray-500 mt-1">
-          {c.company} • Score: {c.lead_score}
-        </div>
+      <div className="font-medium text-sm text-gray-900">{displayName}</div>
+      <div className="text-xs text-gray-500 mt-1">{contact.email}</div>
+      {contact.company && (
+        <div className="text-xs text-gray-500 mt-1">{contact.company}</div>
       )}
-      {deal.value && (
-        <div className="text-xs text-green-600 mt-1">${deal.value.toLocaleString()}</div>
-      )}
+      
+      {/* Stage selector dropdown */}
+      <select 
+        className="mt-2 w-full text-xs border rounded p-1 bg-gray-50"
+        value={contact.pipeline_stage_id || ''}
+        onChange={(e) => onMoveContact(contact.id, e.target.value)}
+      >
+        {allStages.map(stage => (
+          <option key={stage.id} value={stage.id}>
+            {stage.name}
+          </option>
+        ))}
+      </select>
     </div>
   )
 } 

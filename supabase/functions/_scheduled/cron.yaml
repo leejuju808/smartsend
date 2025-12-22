@@ -1,0 +1,97 @@
+version: 1
+functions:
+  - name: send-tick
+    schedule: "* * * * *"   # every minute
+    verify_jwt: false
+  - name: sync-gmail
+    schedule: "15 3 * * *"
+    verify_jwt: false
+  - name: sync-outlook
+    schedule: "30 3 * * *"
+    verify_jwt: false
+  - name: push-maintenance
+    schedule: "0 4 * * *"
+    verify_jwt: false
+  - name: sla-worker
+    schedule: "*/5 * * * *"
+    verify_jwt: false
+  - name: normalized_resolver
+    schedule: "*/3 * * * *"
+    verify_jwt: false
+    arguments:
+      headers:
+        x-cron-secret: ${CRON_SECRET}
+  - name: nudge-decay
+    schedule: "0 2 * * *"
+    verify_jwt: false
+  - name: prompt-evolver-promote
+    schedule: "0 5 * * *"
+    verify_jwt: false
+  - name: llm-rewrite-feedback
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    verify_jwt: false
+  - name: llm-rewrite-tuner
+    schedule: "0 3 * * 0"  # Weekly on Sunday at 3 AM
+    verify_jwt: false
+  - name: llm-rewrite-rollback
+    schedule: "0 4 * * 1"  # Weekly on Monday at 4 AM
+    verify_jwt: false
+  - name: run-enrichment-v1
+    schedule: "*/30 * * * *"  # Every 30 minutes
+    verify_jwt: false
+  - name: check-domains-cron
+    schedule: "*/15 * * * *"  # Every 15 minutes
+    verify_jwt: false
+  - name: inbox-health-watcher
+    schedule: "0 2 * * *"  # Daily at 2 AM UTC
+    verify_jwt: false
+  - name: smartlead-sync
+    schedule: "0 3 * * *"  # Daily at 3 AM UTC - Nightly enrichment refresh
+    verify_jwt: false
+  - name: autopilot-dispatcher
+    schedule: "* * * * *"  # Every minute - dispatch AI SDR autopilot jobs to send_queue
+    verify_jwt: false
+  - name: followup-engine
+    schedule: "0 * * * *"  # Every hour - execute follow-up rules engine
+    verify_jwt: false
+  - name: auto-followup-scheduler
+    schedule: "*/20 * * * *"  # Every 20 minutes - Block 8880 auto-follow-up scheduler
+    verify_jwt: false
+  - name: auto-unsnooze-threads
+    schedule: "0 * * * *"  # Every hour - auto-unsnooze threads when time is reached
+    verify_jwt: false
+  - name: contact-enrichment-batch
+    schedule: "0 3 * * *"  # Daily at 3 AM UTC - Block 13400 contact enrichment batch job
+    verify_jwt: false
+  - name: send-executive-report
+    schedule: "0 6 * * 1"  # Every Monday at 6 AM UTC - Block 26800 Executive Summary Report
+    verify_jwt: false
+  - name: send_queue_worker
+    schedule: "* * * * *"  # Every minute - Block 21505 SmartSend Roofing Send Queue Engine v1
+    verify_jwt: false
+  - name: demo-followup-processor
+    schedule: "*/15 * * * *"  # Every 15 minutes - Block 23472 Demo Follow-Up System v1
+    verify_jwt: false
+  - name: owner-inbox-daily-digest
+    schedule: "0 6 * * *"  # Daily at 6 AM UTC - Block 24780 Owner Inbox Daily Digest
+    verify_jwt: false
+  - name: owner-inbox-escalation-engine
+    schedule: "*/30 * * * *"  # Every 30 minutes - Block 24780 Owner Inbox Escalation Engine
+    verify_jwt: false
+  - name: generate-collections-tasks
+    schedule: "0 8 * * *"  # Daily at 8 AM UTC - Block 26200 Collections Engine (find overdue invoices, create tasks, enqueue reminders)
+    verify_jwt: false
+  - name: schedule-warranty-events
+    schedule: "0 5 * * *"  # Daily at 5 AM UTC - Block 28000 Warranty & Service Call Engine (schedule warranty check-in events)
+    verify_jwt: false
+  - name: warranty-check-expirations
+    schedule: "0 6 * * *"  # Daily at 6 AM UTC - Block 52000 Warranty Tracking System (check warranty expirations and send alerts)
+    verify_jwt: false
+  - name: sales-followup-send
+    schedule: "*/15 * * * *"  # Every 15 minutes - Block 59000 AI Sales Coach (send scheduled sales follow-ups)
+    verify_jwt: false
+  - name: sub-compliance-alerts
+    schedule: "0 6 * * *"  # Daily at 6 AM UTC - Block 252500 Subcontractor Compliance Expiration Alerts
+    verify_jwt: false
+
+

@@ -1,92 +1,66 @@
-import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import { NextRequest, NextResponse } from "next/server";
+import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-07-30.basil" });
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { workspaceId, email, seatCount, priceId } = await req.json() as { workspaceId: string; email: string; seatCount?: number; priceId?: string };
-
-    if (!workspaceId) {
-      return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
-    }
-    if (!email) {
-      return NextResponse.json({ error: "email is required" }, { status: 400 });
-    }
-    const seats = Math.max(1, Number(seatCount || 1));
-
-    const { data: ws, error: wsErr } = await supabase
-      .from("workspaces")
-      .select("id, stripe_customer_id")
-      .eq("id", workspaceId)
-      .single();
-    if (wsErr || !ws) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    const { user_id, email, refCode } = await req.json();
+    if (!user_id || !email) {
+      return NextResponse.json({ error: "user_id and email required" }, { status: 400 });
     }
 
-    // Get the user ID from the email using profiles table
+    // Ensure profile
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id")
-      .eq("email", email)
+      .select("*")
+      .eq("user_id", user_id)
       .maybeSingle();
-    const userId = profile?.id;
 
-    let customerId: string | null = (ws as any).stripe_customer_id || null;
+    // Create or reuse Stripe customer
+    let customerId = profile?.stripe_customer_id;
     if (!customerId) {
-      const customer = await stripe.customers.create({ email });
+      const customer = await stripe.customers.create({
+        email,
+        metadata: { user_id },
+      });
       customerId = customer.id;
-      await supabase.from("workspaces").update({ stripe_customer_id: customerId }).eq("id", workspaceId);
+      await supabase.from("profiles").upsert({ user_id, email, stripe_customer_id: customer.id });
     }
 
-    // If a plan priceId is provided, create a single-line-item subscription for that plan.
-    // Otherwise, fall back to base+seat pricing model using seatCount.
-    let session: Stripe.Checkout.Session;
-    if (priceId) {
-      session = await stripe.checkout.sessions.create({
-        customer: customerId!,
-        mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing?success=true`,
-        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing?canceled=true`,
-        metadata: { 
-          workspace_id: workspaceId, 
-          price_id: priceId,
-          user_id: userId || undefined
-        },
-      });
-    } else {
-      const basePrice = process.env.STRIPE_BASE_PRICE_ID!;
-      const seatPrice = process.env.STRIPE_SEAT_PRICE_ID!;
-      if (!basePrice || !seatPrice) {
-        return NextResponse.json({ error: "Missing Stripe price IDs" }, { status: 500 });
-      }
-
-      session = await stripe.checkout.sessions.create({
-        customer: customerId!,
-        mode: "subscription",
-        line_items: [
-          { price: basePrice, quantity: 1 },
-          { price: seatPrice, quantity: Math.max(0, seats - 1) },
-        ],
-        success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing?success=true`,
-        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing?canceled=true`,
-        metadata: { 
-          workspace_id: workspaceId, 
-          seat_count: String(seats),
-          user_id: userId || undefined
-        },
-      });
+    // Build metadata
+    const metadata: Record<string, string> = { user_id };
+    const subscriptionMetadata: Record<string, string> = { user_id };
+    if (refCode) {
+      metadata.ref = String(refCode);
+      subscriptionMetadata.ref = String(refCode);
     }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId!,
+      line_items: [
+        {
+          price: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID!, // e.g., price_123
+          quantity: 1,
+        },
+      ],
+      allow_promotion_codes: true,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?success=1`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?canceled=1`,
+      subscription_data: {
+        metadata: subscriptionMetadata,
+      },
+      metadata,
+    });
 
     return NextResponse.json({ url: session.url });
-  } catch (err: any) {
-    console.error("Stripe error:", err?.message || err);
-    return NextResponse.json({ error: err?.message || "Internal error" }, { status: 500 });
+  } catch (e: any) {
+    console.error("checkout error", e);
+    return NextResponse.json({ error: e.message ?? "checkout failed" }, { status: 500 });
   }
-} 
+}

@@ -1,9 +1,23 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { renderTemplate, type MinimalContact } from "@/lib/renderTemplate";
+import { renderTemplate } from "@/lib/renderTemplate";
+
+interface Contact {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+  title?: string;
+  phone?: string;
+  custom?: Record<string, any>;
+  created_at: string;
+  is_suppressed?: boolean;
+}
 import { split, toHtml } from "@/lib/campaign-utils";
 import { Input } from "@/components/ui/Input";
 import Link from "next/link";
+import TemplateRewriteDialog from "@/components/rewrite/TemplateRewriteDialog";
 
 export default function NewCampaignPage() {
   const [name, setName] = useState("");
@@ -16,7 +30,7 @@ export default function NewCampaignPage() {
   const [creating, setCreating] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState<number | null>(null);
-  const [contacts, setContacts] = useState<MinimalContact[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [sampleIdx, setSampleIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +39,13 @@ export default function NewCampaignPage() {
     (async () => {
       try {
         setLoadingContacts(true);
-        const r = await fetch("/api/contacts/list");
+        const activeWorkspace = localStorage.getItem('active_workspace');
+        const headers: Record<string, string> = {};
+        if (activeWorkspace) {
+          headers['x-workspace-id'] = activeWorkspace;
+        }
+        
+        const r = await fetch("/api/contacts/list", { headers });
         if (!r.ok) {
           throw new Error(`Failed to fetch contacts: ${r.status}`);
         }
@@ -41,8 +61,16 @@ export default function NewCampaignPage() {
   }, []);
 
   const sample = contacts.length ? contacts[Math.min(sampleIdx, contacts.length - 1)] : null;
-  const subjectPreview = useMemo(() => (sample ? renderTemplate(subject, sample) : subject), [subject, sample]);
-  const bodyPreview = useMemo(() => (sample ? renderTemplate(body, sample) : body), [body, sample]);
+  const subjectPreview = useMemo(() => {
+    if (!sample) return subject;
+    const result = renderTemplate(subject, sample);
+    return result.rendered;
+  }, [subject, sample]);
+  const bodyPreview = useMemo(() => {
+    if (!sample) return body;
+    const result = renderTemplate(body, sample);
+    return result.rendered;
+  }, [body, sample]);
 
   async function create() {
     if (!name.trim() || !subject.trim() || !body.trim()) {
@@ -69,9 +97,15 @@ export default function NewCampaignPage() {
         search: ""
       };
       
+      // Get active workspace from localStorage
+      const activeWorkspace = localStorage.getItem('active_workspace');
+      
       const res = await fetch("/api/campaigns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(activeWorkspace && { "x-workspace-id": activeWorkspace })
+        },
         body: JSON.stringify({ name, subject, body_html: toHtml(body), segment }),
       });
       
@@ -85,6 +119,17 @@ export default function NewCampaignPage() {
       if (j?.ok && j?.campaign) {
         setCreatedId(j.campaign.id);
         setPreviewTotal(j.campaign.total);
+        
+        // Mark onboarding step complete
+        try {
+          await fetch('/api/onboarding/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ step: 'create_campaign' }),
+          })
+        } catch (e) {
+          // Silently fail - onboarding is not critical
+        }
       } else {
         throw new Error("Invalid response from server");
       }
@@ -113,12 +158,19 @@ export default function NewCampaignPage() {
           value={name} 
           onChange={e => setName(e.target.value)} 
         />
-        <input 
-          className="rounded-xl border p-2" 
-          placeholder="Subject" 
-          value={subject} 
-          onChange={e => setSubject(e.target.value)} 
-        />
+        <div className="flex gap-2">
+          <input 
+            className="flex-1 rounded-xl border p-2" 
+            placeholder="Subject" 
+            value={subject} 
+            onChange={e => setSubject(e.target.value)} 
+          />
+          <TemplateRewriteDialog
+            initialSubject={subject}
+            initialBody={body}
+            onUseVariant={(v: { subject: string; body: string }) => { setSubject(v.subject); setBody(v.body); }}
+          />
+        </div>
         <textarea 
           className="min-h-[200px] rounded-xl border p-3 font-mono" 
           value={body} 
@@ -171,9 +223,18 @@ export default function NewCampaignPage() {
 
       <div className="rounded-2xl border p-4 space-y-3">
         <div className="text-sm font-medium">Segment</div>
-        <Input label="Tags (any match)" value={tagsAny} onChange={setTagsAny} placeholder="lead, trial, imported-2025-08" />
-        <Input label="Include domains" value={includeDomains} onChange={setIncludeDomains} placeholder="company.com, example.org" />
-        <Input label="Exclude domains" value={excludeDomains} onChange={setExcludeDomains} placeholder="gmail.com" />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tags (any match)</label>
+          <Input value={tagsAny} onChange={(e) => setTagsAny(e.target.value)} placeholder="lead, trial, imported-2025-08" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Include domains</label>
+          <Input value={includeDomains} onChange={(e) => setIncludeDomains(e.target.value)} placeholder="company.com, example.org" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Exclude domains</label>
+          <Input value={excludeDomains} onChange={(e) => setExcludeDomains(e.target.value)} placeholder="gmail.com" />
+        </div>
         <label className="flex items-center gap-2 text-sm">
           <input 
             type="checkbox" 

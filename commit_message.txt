@@ -1,0 +1,35 @@
+docs(investor): AUREV HQ 2026 investor materials complete
+
+Created comprehensive investor package for Seed/Angel round:
+
+Deliverables:
+- 14-slide pitch deck with black-gold lightning theme
+- One-pager executive summary
+- Comprehensive data sheet with all metrics
+- Detailed use of funds breakdown ($1M → 18 months)
+- Web presentation (HTML/CSS)
+- Master README guide
+
+Key Metrics:
+- $85K MRR, 8% MoM growth, <5% churn
+- 100+ active orgs across 3 apps
+- 92% AI reply accuracy
+- LTV/CAC 5.4x, payback <30 days
+
+Funding Ask:
+- $1M seed round
+- 18-month runway to $2M ARR
+- 50% Product / 35% Team / 15% Growth
+
+Files:
+- docs/investor/AUREV_HQ_2026_Investor_Deck.md
+- docs/investor/AUREV_HQ_2026_One_Pager.md
+- docs/investor/AUREV_HQ_2026_Data_Sheet.md
+- docs/investor/AUREV_HQ_2026_Use_of_Funds.md
+- docs/investor/AUREV_HQ_README.md
+- public/investors/index.html
+- public/investors/README.md
+- AUREV_HQ_INVESTOR_MATERIALS_COMPLETE.md
+
+Theme: Black (#0B0B0C) + Gold (#F7C948) + Lightning ⚡
+

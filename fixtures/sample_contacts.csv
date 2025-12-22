@@ -1,0 +1,9 @@
+Email,First Name,Last Name,Company,Title,Phone,Notes
+john.doe@example.com,John,Doe,Acme Corp,CEO,+1-555-0123,Interested in enterprise plan
+jane.smith@company.com,Jane,Smith,Tech Inc,CTO,+1-555-0456,Requested demo
+bob.wilson@startup.io,Bob,Wilson,StartupCo,Founder,+1-555-0789,Early stage company
+alice.brown@bigcorp.com,Alice,Brown,BigCorp,VP Sales,+1-555-0321,Large enterprise prospect
+charlie.davis@test.com,Charlie,Davis,TestCorp,Manager,+1-555-0654,Testing contact
+invalid-email,Invalid,Email,TestCorp,Manager,+1-555-0987,This should be skipped
+john.doe@example.com,John,Doe,Acme Corp,CEO,+1-555-0123,Duplicate - should be skipped
+sarah.jones@example.com,Sarah,Jones,NewCorp,Director,+1-555-0111,Fresh contact

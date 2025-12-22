@@ -1,33 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-function supa() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+
+    // Get user
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    // Fetch suppressions for the user
+    const { data: suppressions, error: fetchError } = await supabase
+      .from("suppressions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("kind", "email")
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return NextResponse.json({ rows: suppressions || [] });
+
+  } catch (error: any) {
+    console.error("Fetch suppressions error:", error);
+    return NextResponse.json({ error: error.message || "Failed to fetch suppressions" }, { status: 500 });
+  }
 }
 
-export async function GET() {
-  const sb = supa();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ rows: [] });
-
-  const { data } = await sb.from("suppression_list")
-    .select("email,reason").eq("user_id", user.id).order("email");
-  return NextResponse.json({ rows: data || [] });
-}
-
-export async function POST(req: NextRequest) {
-  const sb = supa();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Not authed" }, { status: 401 });
-
-  const { email, reason } = await req.json();
-  if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
-
-  const e = String(email).trim().toLowerCase();
-  const { error } = await sb.from("suppression_list").upsert({ user_id: user.id, email: e, reason: reason || null }, { onConflict: "user_id,email" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const { data } = await sb.from("suppression_list")
-    .select("email,reason").eq("user_id", user.id).order("email");
-  return NextResponse.json({ rows: data || [] });
-} 
+ 

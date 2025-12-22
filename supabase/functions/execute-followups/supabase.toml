@@ -1,0 +1,8 @@
+[functions.execute-followups]
+verify_jwt = false
+schedule = "0 * * * *"
+
+
+
+
+

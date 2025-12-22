@@ -1,20 +1,23 @@
-interface InputProps {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-export function Input({ label, value, onChange, placeholder }: InputProps) {
-  return (
-    <div>
-      <div className="text-xs text-gray-600">{label}</div>
-      <input 
-        className="mt-1 w-full rounded-xl border p-2" 
-        value={value} 
-        onChange={e => onChange(e.target.value)} 
-        placeholder={placeholder}
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, ...props }, ref) => {
+    return (
+      <input
+        ref={ref}
+        className={cn(
+          "flex h-10 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        {...props}
       />
-    </div>
-  );
-} 
+    );
+  }
+);
+Input.displayName = "Input";
+
+export { Input };

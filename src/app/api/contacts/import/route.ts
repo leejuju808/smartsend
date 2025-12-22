@@ -1,129 +1,193 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { recordEvent } from "@/lib/events";
+import { getUserAndWorkspace } from "@/lib/api-helpers";
+import { validateContacts, ContactCSVRow, ValidatedContact, ValidationErrorCode } from "@/lib/validation/contact-validator";
+import { parse } from "csv-parse/sync";
 
-type IncomingContact = {
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  company?: string;
-};
-
-function normalizeEmail(e: string | undefined): string | null {
-  if (!e) return null;
-  return e.trim().toLowerCase();
-}
-
-function getSupabaseServer() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  // Use cookies for auth (if using Supabase Auth Helpers, adapt accordingly)
-  return createClient(supabaseUrl, supabaseAnon, { global: { headers: { 'X-Client-Info': 'smartsend/import' } } });
-}
-
+/**
+ * POST /api/contacts/import
+ * 
+ * Enhanced import endpoint with validation guardrails.
+ * Accepts validated rows and imports only valid contacts.
+ * 
+ * Body options:
+ * - rows: ContactCSVRow[] - validated contact rows
+ * - options: { overwriteDuplicates?: boolean, skipWarnings?: boolean }
+ */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabaseServer();
-
-    // Get user
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const { user, supabase, workspaceId } = await getUserAndWorkspace();
     const userId = user.id;
 
-    const payload = await req.json();
-    const rows: IncomingContact[] = Array.isArray(payload?.rows) ? payload.rows : [];
-    if (!rows.length) {
-      return NextResponse.json({ error: "No rows" }, { status: 400 });
+    const body = await req.json();
+    const { rows, options = {} } = body;
+
+    if (!Array.isArray(rows)) {
+      return NextResponse.json(
+        { error: "rows must be an array" },
+        { status: 400 }
+      );
     }
 
-    // Client-side may have deduped already; we still dedupe here (by email)
-    const map = new Map<string, IncomingContact>();
-    for (const r of rows) {
-      const email = normalizeEmail(r.email);
-      if (!email) continue;
-      if (!map.has(email)) {
-        map.set(email, {
-          email,
-          first_name: (r.first_name || "").trim() || undefined,
-          last_name: (r.last_name || "").trim() || undefined,
-          company: (r.company || "").trim() || undefined
-        });
-      }
+    if (rows.length === 0) {
+      return NextResponse.json(
+        { error: "No rows provided" },
+        { status: 400 }
+      );
     }
-    const unique = Array.from(map.values());
 
-    // Filter out suppressed emails
-    const emails = unique.map(r => r.email);
+    // Guardrail: Hard limit per upload
+    const MAX_ROWS = 25000;
+    if (rows.length > MAX_ROWS) {
+      return NextResponse.json(
+        { 
+          error: `Upload exceeds maximum of ${MAX_ROWS} contacts. Please split your file.`,
+          ok: false 
+        },
+        { status: 400 }
+      );
+    }
+
+    // Get existing contacts for duplicate detection
+    const { data: existingContacts } = await supabase
+      .from("contacts")
+      .select("id, email, first_name, last_name, phone")
+      .eq("workspace_id", workspaceId);
+
+    const existingEmails = (existingContacts || []).map(c => c.email);
+    const existingContactsList = (existingContacts || []).map(c => ({
+      id: c.id,
+      email: c.email,
+      first_name: c.first_name || undefined,
+      last_name: c.last_name || undefined,
+      phone: c.phone || undefined,
+      address: undefined,
+    }));
+
+    // Get suppressed emails
     const { data: suppressed } = await supabase
-      .from("suppression_list")
-      .select("email")
-      .eq("user_id", userId)
-      .in("email", emails.map(e => e.toLowerCase()));
+      .from("suppressions")
+      .select("value_lower")
+      .eq("workspace_id", workspaceId)
+      .eq("kind", "email");
 
-    const suppressedSet = new Set((suppressed || []).map(s => s.email.toLowerCase()));
-    const toInsert = unique.filter(r => !suppressedSet.has(r.email.toLowerCase()));
+    const suppressedEmails = new Set((suppressed || []).map(s => s.value_lower));
 
-    // Chunk upserts to avoid payload limits
-    const chunk = <T,>(arr: T[], size = 500) =>
-      Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, (i + 1) * size));
+    // Validate contacts (skip MX check for performance during import)
+    const validationResult = await validateContacts(
+      rows as ContactCSVRow[],
+      existingEmails,
+      existingContactsList,
+      {
+        checkMX: false, // Skip MX check during import for speed
+        skipMXCheck: true,
+        maxRows: MAX_ROWS,
+      }
+    );
 
+    // Filter contacts based on options
+    let contactsToInsert: ValidatedContact[] = [];
+
+    for (const validated of validationResult.results) {
+      // Skip invalid contacts
+      if (!validated.valid) {
+        // Check if we should overwrite duplicates
+        if (
+          options.overwriteDuplicates &&
+          validated.duplicate_of &&
+          validated.errors.includes(ValidationErrorCode.DUPLICATE_EMAIL)
+        ) {
+          // Overwrite: delete existing and add new
+          await supabase
+            .from("contacts")
+            .delete()
+            .eq("id", validated.duplicate_of)
+            .eq("workspace_id", workspaceId);
+
+          // Add to insert list
+          contactsToInsert.push(validated);
+        }
+        continue;
+      }
+
+      // Block 12600: Skip suppressed emails and track count
+      if (validated.cleaned.email && suppressedEmails.has(validated.cleaned.email.toLowerCase())) {
+        validationResult.summary.suppressed = (validationResult.summary.suppressed || 0) + 1;
+        continue;
+      }
+
+      // Skip warnings if option is set
+      if (options.skipWarnings && validated.warnings.length > 0) {
+        continue;
+      }
+
+      contactsToInsert.push(validated);
+    }
+
+    // Prepare contacts for insertion
+    const contactsForDB = contactsToInsert.map(validated => ({
+      workspace_id: workspaceId,
+      email: validated.cleaned.email!.toLowerCase(),
+      first_name: validated.cleaned.first_name || null,
+      last_name: validated.cleaned.last_name || null,
+      company: validated.cleaned.company || null,
+      phone: validated.cleaned.phone || null,
+      title: validated.cleaned.title || null,
+      custom: {
+        ...(validated.cleaned.address && { address: validated.cleaned.address }),
+        ...(validated.cleaned.city && { city: validated.cleaned.city }),
+        ...(validated.cleaned.state && { state: validated.cleaned.state }),
+        ...(validated.cleaned.zip && { zip: validated.cleaned.zip }),
+        ...(validated.cleaned.country && { country: validated.cleaned.country }),
+      },
+    }));
+
+    // Insert contacts in chunks
     let inserted = 0;
-    for (const part of chunk(toInsert, 500)) {
-      const records = part.map(p => ({ ...p, user_id: userId }));
+    const chunkSize = 500;
+    const errors: string[] = [];
+
+    for (let i = 0; i < contactsForDB.length; i += chunkSize) {
+      const chunk = contactsForDB.slice(i, i + chunkSize);
       const { error } = await supabase
         .from("contacts")
-        .upsert(records, { onConflict: "user_id,email", ignoreDuplicates: false });
+        .upsert(chunk, {
+          onConflict: "workspace_id,email",
+          ignoreDuplicates: false,
+        });
+
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("Insert error:", error);
+        errors.push(`Chunk ${i / chunkSize + 1}: ${error.message}`);
+      } else {
+        inserted += chunk.length;
       }
-      inserted += records.length;
     }
 
-    // Record contacts import event
-    await recordEvent(userId, "contacts_imported", { count: inserted });
-
-    // Increment trial counters if user is trialing
-    try {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("subscription_status")
-        .eq("id", userId)
-        .maybeSingle();
-      
-      if (prof?.subscription_status === "trialing") {
-        await supabase.rpc("increment_trial_contacts", { uid: userId, n: inserted });
-      }
-    } catch (error) {
-      // Don't fail the import if trial counting fails
-      console.warn('Trial counting error:', error);
-    }
-
-    // Mark onboarding step as complete
-    try {
-      const { data, error } = await supabase.rpc("merge_onboarding_step", {
-        uid: userId,
-        k: "import_contacts",
-      });
-      if (error) {
-        console.warn('Failed to update onboarding step:', error);
-      }
-    } catch (e) {
-      // Don't fail the import if onboarding update fails
-      console.warn('Failed to update onboarding step:', e);
-    }
-
+    // Return summary
+    const suppressedCount = validationResult.summary.suppressed || 0;
     return NextResponse.json({
       ok: true,
-      received: rows.length,
-      unique: unique.length,
-      suppressed_skipped: unique.length - toInsert.length,
-      upserted: inserted
+      summary: {
+        total_rows: validationResult.summary.total_rows,
+        valid: validationResult.summary.valid,
+        invalid: validationResult.summary.invalid,
+        warnings: validationResult.summary.warnings,
+        duplicates: validationResult.summary.duplicates,
+        suppressed: suppressedCount,
+        inserted,
+        errors: errors.length > 0 ? errors : undefined,
+      },
+      validation: validationResult,
+      suppressed_count: suppressedCount, // Block 12600: Explicit suppressed count
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Import failed" }, { status: 500 });
+  } catch (error: any) {
+    console.error("Import error:", error);
+    return NextResponse.json(
+      {
+        error: error.message || "Import failed",
+        ok: false,
+      },
+      { status: 400 }
+    );
   }
 }
-

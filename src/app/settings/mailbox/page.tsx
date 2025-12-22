@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@/lib/supabase";
+import MailboxWarmupSettings from "@/components/settings/MailboxWarmupSettings";
+import MailboxHealthDashboard from "@/components/settings/MailboxHealthDashboard";
 
 export default function MailboxSettingsPage() {
   const sb = createClientComponentClient();
@@ -158,8 +160,14 @@ export default function MailboxSettingsPage() {
       </div>
 
       {status?.verified && (
-        <div className="rounded-2xl border p-4 bg-green-50 text-green-800">✅ Mailbox verified. You’re ready to send campaigns.</div>
+        <div className="rounded-2xl border p-4 bg-green-50 text-green-800">✅ Mailbox verified. You're ready to send campaigns.</div>
       )}
+
+      {/* Warmup Settings */}
+      <MailboxWarmupSettings />
+
+      {/* Health Dashboard */}
+      <MailboxHealthDashboard />
     </div>
   );
 }

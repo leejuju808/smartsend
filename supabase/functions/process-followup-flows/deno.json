@@ -1,0 +1,14 @@
+{
+  "deploy": {
+    "exclude": [".env", ".env.example"]
+  }
+}
+
+
+
+
+
+
+
+
+

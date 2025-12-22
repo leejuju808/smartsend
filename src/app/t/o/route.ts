@@ -1,58 +1,70 @@
-export const runtime = "nodejs";
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { verify } from "@/lib/events-sign";
+import { createClient } from "@supabase/supabase-js";
 
-const GIF = Buffer.from(
-  "47494638396101000100910000ffffff00000021f90401000001002c00000000010001000002024401003b",
-  "hex"
-);
+function tinyGif(): Uint8Array {
+  const b = Uint8Array.from([71,73,70,56,57,97,1,0,1,0,128,0,0,0,0,0,255,255,255,33,249,4,1,0,0,0,0,44,0,0,0,0,1,0,1,0,0,2,2,68,1,0,59]);
+  return b;
+}
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const cid = url.searchParams.get("cid") || "";
-  const rid = url.searchParams.get("rid") || "";
-  const s = url.searchParams.get("s") || "";
+export async function GET(req: Request) {
+  const u = new URL(req.url);
+  const sl = u.searchParams.get("sl");       // send_log_id
+  const em = u.searchParams.get("em");       // recipient email
+  const tk = u.searchParams.get("tk");       // token
 
-  if (!cid || !rid || !verify(`${cid}:${rid}:open`, s)) {
-    return new NextResponse(GIF, {
-      status: 200,
-      headers: { "Content-Type": "image/gif", "Cache-Control": "no-store" },
+  if (!sl || !em || !tk) {
+    return new Response(tinyGif(), { 
+      status: 204, 
+      headers: { "content-type": "image/gif", "cache-control": "no-store" }
     });
   }
 
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: recip } = await supabase
-    .from("campaign_recipients")
-    .select("id,user_id,campaign_id")
-    .eq("id", rid)
-    .eq("campaign_id", cid)
-    .single();
+  const payload = `open:${sl}:${em.toLowerCase()}`;
 
-  if (recip) {
-    const ip = req.headers.get("x-forwarded-for") || (req as any).ip || "";
-    const ua = req.headers.get("user-agent") || "";
-    await Promise.all([
-      supabase.from("email_events").insert({
-        user_id: (recip as any).user_id,
-        campaign_id: (recip as any).campaign_id,
-        recipient_id: (recip as any).id,
-        type: "open",
-        ua,
-        ip,
-      }),
-      supabase
-        .from("campaign_recipients")
-        .update({ open_count: (1 as any), last_open_at: new Date().toISOString() })
-        .eq("id", (recip as any).id)
-        .select(),
-    ]);
+  // Verify token in SQL to keep logic centralized
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  
+  const { data: ok, error: verifyError } = await admin.rpc("_verify", { 
+    p: payload, 
+    tok: tk 
+  });
+
+  if (ok) {
+    // fetch send_log for campaign/lead
+    const { data: log } = await admin
+      .from("send_logs")
+      .select("id, campaign_id, lead_id")
+      .eq("id", sl)
+      .limit(1)
+      .maybeSingle();
+
+    if (log) {
+      const ua = req.headers.get("user-agent") || "";
+      const ipHeader = req.headers.get("x-forwarded-for") || 
+                       req.headers.get("cf-connecting-ip") || 
+                       "";
+      const ip = ipHeader.split(",")[0].trim() || null;
+
+      await admin.rpc("_record_tracking", {
+        p_kind: "open",
+        p_campaign: log.campaign_id,
+        p_send_log: log.id,
+        p_lead: log.lead_id,
+        p_url: null,
+        p_ua: ua,
+        p_ip: ip,
+        p_meta: {}
+      }).catch(() => {});
+    }
   }
 
-  return new NextResponse(GIF, {
-    status: 200,
-    headers: { "Content-Type": "image/gif", "Cache-Control": "no-store" },
+  return new Response(tinyGif(), { 
+    headers: { 
+      "content-type": "image/gif", 
+      "cache-control": "no-store",
+      "pragma": "no-cache"
+    }
   });
 }
-

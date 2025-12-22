@@ -1,0 +1,82 @@
+### Test Smart Template Rewriter API
+
+# Generate 3 variants for a cold email
+POST http://localhost:3000/api/rewrite-template
+Content-Type: application/json
+
+{
+  "subject": "Quick question for {{first_name}} at {{company}}",
+  "body": "Hey {{first_name}}, we built an AI inbox that cuts reply time by 60%. Worth a 7‑minute chat? — Julian",
+  "goal": "meeting-ask",
+  "tone": "professional",
+  "length": "short",
+  "readingLevel": "8th",
+  "reduceSpam": true
+}
+
+###
+
+# Test with different goal
+POST http://localhost:3000/api/rewrite-template
+Content-Type: application/json
+
+{
+  "subject": "Helping {{company}} scale {{problem}}?",
+  "body": "Hi {{first_name}}, Quick check: do you handle {{problem}} manually? We automate it. Interested?",
+  "goal": "demo-request",
+  "tone": "direct",
+  "length": "medium",
+  "readingLevel": "12th",
+  "reduceSpam": true
+}
+
+###
+
+# Test with soft intro (low pressure)
+POST http://localhost:3000/api/rewrite-template
+Content-Type: application/json
+
+{
+  "subject": "Thought you'd like this",
+  "body": "{{first_name}}, found this case study about {{company}} and thought you'd find it useful. Enjoy!",
+  "goal": "soft-intro",
+  "tone": "friendly",
+  "length": "short",
+  "readingLevel": "8th",
+  "reduceSpam": true
+}
+
+###
+
+# Test with follow-up
+POST http://localhost:3000/api/rewrite-template
+Content-Type: application/json
+
+{
+  "subject": "Following up on {{topic}}",
+  "body": "Hey {{first_name}}, circling back on our {{topic}} conversation. Still interested? Let me know!",
+  "goal": "follow-up",
+  "tone": "casual",
+  "length": "short",
+  "readingLevel": "8th",
+  "reduceSpam": true
+}
+
+###
+
+# Test with custom merge tags
+POST http://localhost:3000/api/rewrite-template
+Content-Type: application/json
+
+{
+  "subject": "{{custom_field}} for {{first_name}}",
+  "body": "Hi {{first_name}}, saw {{custom_field}} and thought about {{company}}. Worth exploring?",
+  "goal": "information",
+  "tone": "conversational",
+  "length": "medium",
+  "readingLevel": "college",
+  "reduceSpam": false
+}
+
+###
+

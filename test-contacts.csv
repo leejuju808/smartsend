@@ -1,0 +1,6 @@
+Email,First Name,Last Name,Company,Title,Phone
+prospect1@example.com,Ada,Lovelace,Analytical Engines,CTO,555-1001
+prospect2@example.com,Alan,Turing,Turing Works,Founder,555-1002
+blocked@example.com,Grace,Hopper,US Navy,Rear Admiral,555-1003
+prospect2@example.com,Alan,Turing,Turing Works,Founder,555-1002
+bademail,Not,Valid,Nope,None,555-1004

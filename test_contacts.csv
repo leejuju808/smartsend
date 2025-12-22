@@ -1,0 +1,10 @@
+Email,First Name,Last Name,Company,Title,Phone,Notes
+john.doe@acmecorp.com,John,Doe,Acme Corp,CEO,555-0001,Key decision maker
+jane.smith@techco.io,Jane,Smith,TechCo,CTO,555-0002,Technical contact
+john.doe@acmecorp.com,John,Doe,Acme Corp,CEO,555-0001,Duplicate row
+bob.wilson@startup.com,Bob,Wilson,Startup Inc,Founder,555-0003,Early stage
+alice@bigcompany.com,Alice,Johnson,Big Company,VP Sales,555-0004,Large account
+charlie@example.com,Charlie,Brown,Example Ltd,Manager,555-0005,Follow up Q3
+noreply@automated.com,NoReply,Bot,Automated,System,555-9999,Should be filtered out
+invalid-email,Test,Invalid,Invalid Co,Tester,555-0000,Missing @ sign
+dave@example.com,Dave,Miller,Example Ltd,Engineer,555-0006,Technical lead

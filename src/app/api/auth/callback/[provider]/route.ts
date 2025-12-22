@@ -54,6 +54,12 @@ export async function GET(request: NextRequest, { params }: { params: { provider
       }, { onConflict: 'owner' })
     }
 
+    // Mark email as connected in onboarding
+    await supabaseAdmin
+      .from('profiles')
+      .update({ onboarding_email_connected: true })
+      .eq('id', userId);
+
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/settings/mailbox?connected=${provider}`)
   } catch (e: any) {
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_SITE_URL}/settings/mailbox?error=${encodeURIComponent(e?.message || 'OAuth failed')}`)

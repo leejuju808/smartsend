@@ -1,40 +1,118 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/server/supabase";
-import { atFriendlyHour, bumpOutOfQuiet, getProfilePolicy } from "@/server/scheduler";
-import { isIana, guessTzFromEmail } from "@/lib/tz";
 
-/** Replace with your real auth */
-function getUserId(req: Request){ return new URL(req.url).searchParams.get("userId"); }
+function getUserId(req: Request) { 
+  return new URL(req.url).searchParams.get("userId"); 
+}
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const userId = getUserId(req);
-  if (!userId) return NextResponse.json({ error:"Unauthorized" }, { status:401 });
-  const { leadIds, startNow } = await req.json().catch(()=> ({}));
-  if (!Array.isArray(leadIds) || leadIds.length === 0) return NextResponse.json({ error:"leadIds[]" }, { status:400 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ownership checks
-  const { data: seq } = await supabaseAdmin.from("sequences")
-    .select("id, owner, status").eq("id", params.id).single();
-  if (!seq || seq.owner !== userId) return NextResponse.json({ error:"Not found" }, { status:404 });
+  try {
+    const body = await req.json();
+    const { emails } = body;
 
-  const policy = await getProfilePolicy(userId);
-  const { data: leadRows } = await supabaseAdmin
-    .from("leads").select("id,email,tz").in("id", leadIds);
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return NextResponse.json({ error: "Emails array is required" }, { status: 400 });
+    }
 
-  const now = new Date();
-  const rows = (leadRows || []).map(l => {
-    let leadTz = isIana((l as any).tz) ? (l as any).tz! : (guessTzFromEmail((l as any).email) || policy.tz);
-    let when = startNow ? bumpOutOfQuiet(new Date(), policy.tz, policy.quietStart, policy.quietEnd)
-                        : atFriendlyHour(new Date(), leadTz, 10);
-    when = bumpOutOfQuiet(when, policy.tz, policy.quietStart, policy.quietEnd);
-    return {
-      owner: userId, sequence_id: params.id, lead_id: (l as any).id,
-      step_no: 1, status: "active", next_send_at: when.toISOString()
-    };
-  });
+    // Ensure ownership of the sequence
+    const { data: seq } = await supabaseAdmin
+      .from("sequences")
+      .select("id")
+      .eq("id", params.id)
+      .eq("user_id", userId)
+      .single();
+      
+    if (!seq) {
+      return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
+    }
 
-  const { error } = await supabaseAdmin.from("enrollments").upsert(rows, { onConflict: "owner,sequence_id,lead_id" });
-  if (error) return NextResponse.json({ error: String(error) }, { status: 500 });
-  return NextResponse.json({ ok: true, scheduled_for: firstSend.toISOString(), count: rows.length });
+    // Check if sequence has steps
+    const { data: steps } = await supabaseAdmin
+      .from("sequence_steps")
+      .select("id")
+      .eq("sequence_id", params.id)
+      .order("step_number");
+      
+    if (!steps || steps.length === 0) {
+      return NextResponse.json({ error: "Sequence has no steps" }, { status: 400 });
+    }
+
+    // Enroll each email
+    const enrollments = [];
+    for (const email of emails) {
+      const { data: enrollment, error } = await supabaseAdmin
+        .from("sequence_enrollments")
+        .upsert({
+          sequence_id: params.id,
+          email: email.toLowerCase().trim(),
+          current_step: 0,
+          last_sent: null
+        }, {
+          onConflict: "sequence_id,email"
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`Failed to enroll ${email}:`, error);
+        continue;
+      }
+      
+      enrollments.push(enrollment);
+    }
+
+    return NextResponse.json({ 
+      ok: true, 
+      enrolled: enrollments.length,
+      message: `Successfully enrolled ${enrollments.length} contacts`
+    });
+
+  } catch (error) {
+    console.error("Error enrolling contacts:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const userId = getUserId(req);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    // Ensure ownership of the sequence
+    const { data: seq } = await supabaseAdmin
+      .from("sequences")
+      .select("id")
+      .eq("id", params.id)
+      .eq("user_id", userId)
+      .single();
+      
+    if (!seq) {
+      return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
+    }
+
+    // Get all enrollments for this sequence
+    const { data: enrollments, error } = await supabaseAdmin
+      .from("sequence_enrollments")
+      .select("*")
+      .eq("sequence_id", params.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching enrollments:", error);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      ok: true, 
+      enrollments: enrollments || []
+    });
+
+  } catch (error) {
+    console.error("Error fetching enrollments:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 

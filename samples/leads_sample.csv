@@ -1,0 +1,7 @@
+email,first_name,last_name,company,linkedin,title,notes
+jane.ceo@example.com,Jane,Price,Acme Inc,https://linkedin.com/in/jane,CEO,Top prospect
+ops.manager@example.com,Karl,Lopez,SupplyCo,https://linkedin.com/in/karl,Ops Manager,Asked for case study
+hello@smallbiz.io,Ari,,SmallBiz,,Owner,
+sales@widgetry.com,Mia,Chen,Widgetry,https://linkedin.com/in/mia,Sr Sales,Follow up next week
+it@builderpros.com,Sam,Diaz,BuilderPros,,IT Lead,Interested in demo
+

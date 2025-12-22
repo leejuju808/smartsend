@@ -1,75 +1,67 @@
-export type TemplateCtx = {
-  lead?: {
-    email: string; name?: string; company?: string;
-    custom1?: string; custom2?: string; custom3?: string;
-  };
-  sender?: { name?: string; email?: string };
-  todayISO?: string; // in user's TZ ideally
-};
+// lib/templating.ts
+// Server-safe merge-tags helper for email templating
 
-function htmlEscape(s: string) {
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
-function titleCase(s: string) {
-  return s.toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase());
-}
-function firstName(s?: string) {
-  if (!s) return "";
-  const parts = s.trim().split(/\s+/);
-  return parts[0] || s;
-}
-function applyFilter(val: string, f?: string) {
-  switch ((f || "").toLowerCase()) {
-    case "first":  return firstName(val);
-    case "title":  return titleCase(val);
-    case "upper":  return val.toUpperCase();
-    case "lower":  return val.toLowerCase();
-    default:       return val;
-  }
+type Dict = Record<string, any>;
+
+const re = /\{\{\s*([a-zA-Z0-9_.|]+)\s*\}\}/g;
+
+function get(obj: Dict, path: string): any {
+  return path.split(".").reduce((o, k) => (o?.[k] ?? ""), obj) ?? "";
 }
 
-function lookupVar(key: string, ctx: TemplateCtx): string {
-  const k = key.toLowerCase();
-  const L = ctx.lead || {};
-  const S = ctx.sender || {};
-  if (k === "name") return L.name || "";
-  if (k === "first_name") return firstName(L.name);
-  if (k === "company") return L.company || "";
-  if (k === "email") return L.email || "";
-  if (k === "custom1") return (L as any).custom1 || "";
-  if (k === "custom2") return (L as any).custom2 || "";
-  if (k === "custom3") return (L as any).custom3 || "";
-  if (k === "sender_name") return S.name || "";
-  if (k === "sender_email") return S.email || "";
-  if (k === "today") return (ctx.todayISO ? new Date(ctx.todayISO) : new Date()).toLocaleDateString();
-  return "";
-}
-
-/**
- * Syntax:
- *  {{name}}                        -> lead.name
- *  {{name|first}}                  -> "First"
- *  {{company|upper}}               -> ACME CO
- *  {{name|there}}                  -> fallback ("there") if missing
- *  {{name|first|there}}            -> filter + fallback
- *  {{sender_name}} {{today}}
- */
-export function renderTemplate(input: string, ctx: TemplateCtx, { html = true } = {}) {
-  if (!input) return input;
-  return input.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_m, inner: string) => {
-    const parts = inner.split("|").map(s => s.trim()).filter(Boolean);
-    const varKey = parts[0] || "";
-    const filter = parts[1] && !parts[1].includes("@") ? parts[1] : undefined;
-    const fallback = parts[parts.length - 1] && parts[parts.length - 1] !== filter ? parts[parts.length - 1] : undefined;
-
-    let val = lookupVar(varKey, ctx);
-    if (!val && fallback) val = fallback;
-    val = applyFilter(val, filter);
-    return html ? htmlEscape(val) : val;
+export function renderTemplate(tpl: string, data: Dict): string {
+  return tpl.replace(re, (_, key) => {
+    // Support {{var | fallback}} syntax
+    const parts = key.split('|').map(s => s.trim());
+    const path = parts[0];
+    const fallback = parts[1] || '';
+    
+    const value = get(data, path);
+    return String(value || fallback);
   });
 }
 
-export function hasUnresolvedTokens(input: string) {
-  return /\{\{[^}]+\}\}/.test(input);
+// Helper function to validate template syntax
+export function validateTemplate(tpl: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const matches = tpl.match(re);
+  
+  if (matches) {
+    matches.forEach(match => {
+      const key = match.replace(/\{\{\s*|\s*\}\}/g, '');
+      if (!/^[a-zA-Z0-9_.|]+$/.test(key)) {
+        errors.push(`Invalid template variable: ${match}`);
+      }
+    });
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
 }
 
+// Helper function to extract all template variables from a template
+export function extractTemplateVariables(tpl: string): string[] {
+  const matches = tpl.match(re);
+  if (!matches) return [];
+  
+  return matches.map(match => {
+    const key = match.replace(/\{\{\s*|\s*\}\}/g, '');
+    // Extract just the variable name, not the fallback
+    return key.split('|')[0].trim();
+  });
+}
+
+// Sanitize HTML by removing dangerous scripts and event handlers
+export function stripDangerous(html?: string | null): string | null {
+  if (!html) return null;
+
+  // Remove script tags
+  let sanitized = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  
+  // Remove event handlers (onclick, onerror, etc.)
+  sanitized = sanitized.replace(/\son\w+="[^"]*"/gi, '');
+  
+  return sanitized;
+}

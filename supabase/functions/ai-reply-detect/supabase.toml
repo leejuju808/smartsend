@@ -1,0 +1,9 @@
+name = "ai-reply-detect"
+
+[functions.ai-reply-detect]
+verify_jwt = false
+
+
+
+
+

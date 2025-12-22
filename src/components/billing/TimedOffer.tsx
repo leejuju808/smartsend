@@ -79,7 +79,7 @@ export default function TimedOffer() {
         </div>
         
         <p className="text-sm text-orange-700">
-          Unlock unlimited replies, bigger imports, and full extension access.
+          Unlock higher reply limits, bigger imports, and full extension access.
         </p>
 
         <div className="text-lg font-mono bg-white px-4 py-2 rounded border-2 border-orange-300 inline-block">

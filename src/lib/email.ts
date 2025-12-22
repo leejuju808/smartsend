@@ -14,3 +14,8 @@ export function isLikelyEmail(e: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
 }
 
+// App Router API routes import `@/lib/email`.
+// Re-export the sending implementation from the root `lib/` folder.
+export { mdToHtml, sendEmailWithHtml, sendEmail } from "../../lib/email";
+export type { SendEmailOptions } from "../../lib/email";
+

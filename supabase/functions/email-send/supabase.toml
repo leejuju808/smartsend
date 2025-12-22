@@ -1,0 +1,11 @@
+[functions.email-send]
+verify_jwt = false
+
+[functions.email-send.environment]
+CRON_SECRET = "set-a-random-string"
+SEND_BATCH = "10"
+
+[[cron.jobs]]
+schedule = "* * * * *"
+endpoint = "/email-send?key=set-a-random-string"
+

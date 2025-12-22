@@ -1,265 +1,221 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { createClientComponentClient } from "@/lib/supabase";
-import { canManageBilling } from "@/utils/permissions";
-import CreditMeter from "@/components/CreditMeter";
-import TimedOffer from "@/components/billing/TimedOffer";
 
 export default function BillingPage() {
+  const [loading, setLoading] = useState(false);
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string>("free");
+  const [usage, setUsage] = useState({ leads: 0, sends: 0, seats: 1 });
   const supabase = createClientComponentClient();
-  const [workspace, setWorkspace] = useState<any | null>(null);
-  const [seatCount, setSeatCount] = useState<number>(1);
-  const [email, setEmail] = useState<string>("");
-  const [myRole, setMyRole] = useState<string | null>(null);
-  const [usedSeats, setUsedSeats] = useState<number>(0);
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [manageBillingLoading, setManageBillingLoading] = useState(false);
-  const [plan, setPlan] = useState<"monthly"|"annual">("monthly");
 
   useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setEmail(user.email || "");
-      const { data } = await supabase
-        .from("workspace_members")
-        .select("role, workspace_id, workspaces(*)")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const ws = (data as any)?.workspaces || null;
-      setMyRole((data as any)?.role ?? null);
-      setWorkspace(ws);
-      if (ws?.subscription_status) setSeatCount(ws.seat_limit);
-      if (ws?.member_count != null) setUsedSeats(ws.member_count);
-    })();
-  }, [supabase]);
+    const loadData = async () => {
+      try {
+        // Get user email
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email) {
+          setUserEmail(user.email);
+        }
 
-  async function handleCheckout(priceId?: string) {
-    if (!workspace) return;
-    const res = await fetch("/api/stripe/create-checkout-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspaceId: workspace.id, email, seatCount, priceId }),
-    });
-    const json = await res.json();
-    if (json?.url) window.location.href = json.url;
-  }
+        // Get team ID from localStorage or API
+        const savedTeamId = localStorage.getItem("activeTeamId");
+        if (savedTeamId) {
+          setTeamId(savedTeamId);
+        } else {
+          // Fetch teams and use first one
+          const res = await fetch("/api/teams/list");
+          const data = await res.json();
+          if (data.items && data.items.length > 0) {
+            const firstTeamId = data.items[0].id;
+            setTeamId(firstTeamId);
+            localStorage.setItem("activeTeamId", firstTeamId);
+          }
+        }
 
-  async function upgradeToPro() {
-    setUpgradeLoading(true);
+        // Load team plan and usage if teamId is available
+        if (teamId || savedTeamId) {
+          const tId = teamId || savedTeamId;
+          const { data: team } = await supabase
+            .from("teams")
+            .select("plan, usage_leads, usage_sends, usage_seats")
+            .eq("id", tId)
+            .single();
+
+          if (team) {
+            setCurrentPlan(team.plan || "free");
+            setUsage({
+              leads: team.usage_leads || 0,
+              sends: team.usage_sends || 0,
+              seats: team.usage_seats || 1,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error loading billing data:", error);
+      }
+    };
+
+    loadData();
+  }, [supabase, teamId]);
+
+  async function upgrade(plan: string, priceId: string) {
+    if (!teamId || !userEmail) {
+      alert("Please wait for team data to load");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch("/api/billing/checkout", { 
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${supabaseUrl}/functions/v1/createCheckoutSession`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan })
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({
+          teamId,
+          priceId,
+          email: userEmail,
+          plan,
+          successUrl: `${window.location.origin}/dashboard/billing?success=1`,
+          cancelUrl: window.location.href,
+        }),
       });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to create checkout session");
+      }
+
       const j = await res.json();
       if (j.url) {
         window.location.href = j.url;
       } else {
-        alert(j.error || "Upgrade failed");
-        setUpgradeLoading(false);
+        throw new Error("No checkout URL returned");
       }
-    } catch (error) {
-      alert("Upgrade failed");
-      setUpgradeLoading(false);
+    } catch (error: any) {
+      alert(error.message || "Failed to start checkout");
+      setLoading(false);
     }
   }
 
-  async function manageBilling() {
-    setManageBillingLoading(true);
-    try {
-      const res = await fetch("/api/billing/portal", { method: "POST" });
-      const j = await res.json();
-      if (j.url) {
-        window.location.href = j.url;
-      } else {
-        alert(j.error || "Failed to open billing portal");
-        setManageBillingLoading(false);
+  // Check for success param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "1") {
+      alert("Subscription activated! Your plan has been updated.");
+      // Reload team data
+      if (teamId) {
+        supabase
+          .from("teams")
+          .select("plan, usage_leads, usage_sends, usage_seats")
+          .eq("id", teamId)
+          .single()
+          .then(({ data: team }) => {
+            if (team) {
+              setCurrentPlan(team.plan || "free");
+              setUsage({
+                leads: team.usage_leads || 0,
+                sends: team.usage_sends || 0,
+                seats: team.usage_seats || 1,
+              });
+            }
+          });
       }
-    } catch (error) {
-      alert("Failed to open billing portal");
-      setManageBillingLoading(false);
     }
-  }
-
-  if (!canManageBilling(myRole)) {
-    return (
-      <div className="p-6 max-w-2xl">
-        <h1 className="text-2xl font-semibold mb-2">Billing</h1>
-        <p className="text-sm text-gray-600">Only workspace owners can manage billing.</p>
-      </div>
-    );
-  }
+  }, [teamId, supabase]);
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold">Billing</h1>
-
-      {/* Credit System */}
-      <CreditMeter />
-
-      {/* Timed Offer - Only show if not pro */}
-      {workspace?.subscription_status !== "pro" && <TimedOffer />}
-
-      {/* Current Plan Status */}
-      <div className="rounded-2xl border p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-lg font-medium">Current Plan</div>
-            <div className="text-sm text-gray-600 capitalize">{workspace?.subscription_status || "free"}</div>
-          </div>
-          {workspace?.subscription_status === "pro" && (
-            <div className="flex gap-2">
-              <button
-                onClick={manageBilling}
-                disabled={manageBillingLoading}
-                className="px-6 py-3 rounded-xl border font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-              >
-                {manageBillingLoading ? "Opening..." : "Manage billing"}
-              </button>
-              <button
-                onClick={async () => {
-                  const r = await fetch("/api/billing/portal", { method: "POST" });
-                  const j = await r.json();
-                  if (j.url) window.location.href = j.url;
-                }}
-                className="px-3 py-3 rounded-xl border text-sm font-medium hover:bg-gray-50 transition-colors"
-              >
-                Manage / Switch plan
-              </button>
-            </div>
-          )}
-        </div>
-
-        {workspace?.subscription_status === "pro" && (
-          <p className="text-sm">{usedSeats} of {workspace?.seat_limit ?? seatCount} seats used</p>
-        )}
+    <div className="p-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Billing & Plans</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          Manage your subscription and upgrade your plan to unlock more features
+        </p>
       </div>
 
-      {/* Upgrade Section - Only show if not pro */}
-      {workspace?.subscription_status !== "pro" && (
-        <div className="rounded-2xl border p-5 space-y-4 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <div className="text-center">
-            <h2 className="text-lg font-medium text-gray-900">Upgrade to Pro</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Unlock campaigns, AI writing, and automations
+      {currentPlan && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm">
+            <strong>Current Plan:</strong> {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Usage: {usage.leads} leads, {usage.sends} sends, {usage.seats} seats
+          </p>
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-3 gap-6">
+        <Card>
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="text-xl font-semibold">Free</div>
+            <div className="text-3xl font-bold">$0</div>
+            <p className="text-sm text-muted-foreground">Up to 500 leads</p>
+            <p className="text-sm text-muted-foreground">200 sends/month</p>
+            <p className="text-sm text-muted-foreground">1 seat</p>
+            <Button variant="outline" disabled>
+              {currentPlan === "free" ? "Current Plan" : "Downgrade"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="text-xl font-semibold">Pro</div>
+            <div className="text-3xl font-bold">$49</div>
+            <div className="text-sm text-muted-foreground">/month</div>
+            <p className="text-sm text-muted-foreground">5,000 leads</p>
+            <p className="text-sm text-muted-foreground">10,000 sends/month</p>
+            <p className="text-sm text-muted-foreground">3 seats</p>
+            <Button
+              onClick={() => upgrade("pro", process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || "price_123")}
+              disabled={loading || currentPlan === "pro"}
+              className="w-full"
+            >
+              {currentPlan === "pro" ? "Current Plan" : "Upgrade → $49/mo"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Replace price_123 with your actual Stripe Pro price ID
             </p>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Monthly/Annual Toggle */}
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => setPlan("monthly")}
-              className={`px-3 py-1 rounded border transition-colors ${
-                plan === "monthly" ? "bg-black text-white" : "hover:bg-gray-50"
-              }`}
+        <Card>
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="text-xl font-semibold">Agency</div>
+            <div className="text-3xl font-bold">$199</div>
+            <div className="text-sm text-muted-foreground">/month</div>
+            <p className="text-sm text-muted-foreground">50,000 leads</p>
+            <p className="text-sm text-muted-foreground">High sending limits</p>
+            <p className="text-sm text-muted-foreground">Seats included</p>
+            <Button
+              onClick={() => upgrade("agency", process.env.NEXT_PUBLIC_STRIPE_PRICE_AGENCY || "price_456")}
+              disabled={loading || currentPlan === "agency"}
+              className="w-full"
             >
-              Monthly
-            </button>
-            <button
-              onClick={() => setPlan("annual")}
-              className={`px-3 py-1 rounded border transition-colors ${
-                plan === "annual" ? "bg-black text-white" : "hover:bg-gray-50"
-              }`}
-            >
-              Annual <span className="ml-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">2 months free</span>
-            </button>
-          </div>
+              {currentPlan === "agency" ? "Current Plan" : "Upgrade → $199/mo"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Replace price_456 with your actual Stripe Agency price ID
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-          <p className="text-gray-600 text-sm text-center">
-            {plan === "annual"
-              ? "Pay once, save ~17%. Best for teams who are all-in."
-              : "Pay monthly. Cancel anytime."}
-          </p>
-
-          <button
-            onClick={upgradeToPro}
-            disabled={upgradeLoading}
-            className="w-full px-6 py-3 rounded-xl bg-black text-white font-medium disabled:opacity-50 hover:bg-gray-800 transition-colors"
-          >
-            {upgradeLoading ? "Redirecting..." : (plan === "annual" ? "Start Annual Plan →" : "Start Monthly Plan →")}
-          </button>
-        </div>
-      )}
-
-      {/* Seat Management - Only show if pro */}
-      {workspace?.subscription_status === "pro" && (
-        <div className="rounded-2xl border p-5 space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="col-span-2">
-              <label className="text-xs text-gray-600">Seat count</label>
-              <input
-                type="number"
-                min={1}
-                value={seatCount}
-                onChange={e => setSeatCount(Math.max(1, Number(e.target.value)))}
-                className="mt-1 w-full rounded-xl border p-2"
-              />
-            </div>
-          </div>
-
-          <button onClick={() => handleCheckout()} className="rounded-2xl bg-black px-4 py-2 text-white">
-            Change Seats
-          </button>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Starter (1 seat)
-            </button>
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAM as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Team (5 seats)
-            </button>
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Pro (20 seats)
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-500">
-            You'll be taken to a secure Stripe Checkout page to complete your subscription.
-          </p>
-        </div>
-      )}
-
-      {/* Legacy upgrade buttons - Only show if not pro */}
-      {workspace?.subscription_status !== "pro" && (
-        <div className="rounded-2xl border p-5 space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Upgrade to Starter (1 seat)
-            </button>
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAM as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Upgrade to Team (5 seats)
-            </button>
-            <button
-              onClick={() => handleCheckout(process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO as any)}
-              className="rounded-2xl border px-4 py-2"
-            >
-              Upgrade to Pro (20 seats)
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-500">
-            You'll be taken to a secure Stripe Checkout page to complete your subscription.
-          </p>
-        </div>
-      )}
+      <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <p className="text-sm font-semibold mb-2">⚠️ Configuration Required</p>
+        <p className="text-xs text-muted-foreground">
+          Set environment variables <code>NEXT_PUBLIC_STRIPE_PRICE_PRO</code> and{" "}
+          <code>NEXT_PUBLIC_STRIPE_PRICE_AGENCY</code> with your actual Stripe price IDs before going live.
+        </p>
+      </div>
     </div>
   );
 }

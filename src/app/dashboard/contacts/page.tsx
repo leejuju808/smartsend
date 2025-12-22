@@ -1,101 +1,106 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import ContactsImporter from "@/components/ContactsImporter";
-import { useSubscription } from "@/lib/useSubscription";
 
-export default function Contacts() {
-  const { status, loading } = useSubscription();
-  const [items, setItems] = useState<any[]>([]);
-  const [banner, setBanner] = useState<string>("");
+import { useState } from 'react';
+import { UploadCsv } from '@/components/contacts/UploadCsv';
+import { ContactsTable } from '@/components/contacts/ContactsTable';
 
-  useEffect(() => {
-    refresh();
-  }, []);
+export default function ContactsPage() {
+  const [showUploadCsv, setShowUploadCsv] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [showImportSummary, setShowImportSummary] = useState(false);
 
-  async function refresh() {
-    const r = await fetch("/api/contacts/list");
-    const j = await r.json();
-    setItems(j.items || []);
-  }
+  // For demo purposes - replace with actual workspace ID from your auth system
+  const demoWorkspaceId = process.env.NEXT_PUBLIC_DEMO_WORKSPACE_ID || 'demo-workspace-id';
 
-  if (loading) return <p className="p-10">Loading...</p>;
-
-  if (status !== "pro" && status !== "active") {
-    return (
-      <main className="p-10">
-        <h1 className="text-2xl font-bold">Upgrade Required 🚀</h1>
-        <p className="mt-4 text-gray-600">
-          Contacts management is a Pro feature. Upgrade to unlock importing and organizing leads.
-        </p>
-        <Link
-          href="/dashboard/billing"
-          className="mt-6 inline-block px-6 py-3 rounded-xl bg-black text-white font-semibold hover:opacity-90"
-        >
-          Upgrade to Pro
-        </Link>
-      </main>
-    );
-  }
+  const handleImportComplete = (result: any) => {
+    setImportResult(result);
+    setShowImportSummary(true);
+    setShowUploadCsv(false);
+    // Refresh the contacts table
+    window.location.reload();
+  };
 
   return (
-    <main className="p-10 space-y-6">
-      <h1 className="text-3xl font-bold">👥 Contacts</h1>
-      {banner && (
-        <div className="rounded-xl border p-3 text-sm bg-green-50 border-green-200 text-green-900">
-          ⚡ {banner}
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
+          <p className="text-gray-600">Manage your contact list and import new contacts</p>
         </div>
-      )}
-
-      <div className="flex gap-4">
-        <Link
-          href="/dashboard/contacts/import"
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        <button
+          onClick={() => setShowUploadCsv(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
         >
-          Import Contacts
-        </Link>
-        <Link
-          href="/dashboard/contacts/suppression"
-          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-        >
-          Suppression List
-        </Link>
+          Import CSV
+        </button>
       </div>
 
-      <ContactsImporter onImported={(r) => {
-        setBanner(`${r.inserted} contacts uploaded.`);
-        refresh();
-        setTimeout(() => setBanner(""), 3000);
-      }} />
+      {showUploadCsv && (
+        <UploadCsv
+          workspaceId={demoWorkspaceId}
+          onImportComplete={handleImportComplete}
+          onClose={() => setShowUploadCsv(false)}
+        />
+      )}
 
-      {items.length > 0 && (
-        <div className="mt-2 overflow-x-auto">
-          <h2 className="text-xl font-semibold mb-4">Your Contacts</h2>
-          <table className="min-w-full border rounded-lg overflow-hidden">
-            <thead className="bg-gray-100 text-left">
-              <tr>
-                <th className="px-4 py-2 border">First Name</th>
-                <th className="px-4 py-2 border">Last Name</th>
-                <th className="px-4 py-2 border">Email</th>
-                <th className="px-4 py-2 border">Company</th>
-                <th className="px-4 py-2 border">Added</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row: any) => (
-                <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 border text-sm">{row.first_name || "-"}</td>
-                  <td className="px-4 py-2 border text-sm">{row.last_name || "-"}</td>
-                  <td className="px-4 py-2 border text-sm">{row.email}</td>
-                  <td className="px-4 py-2 border text-sm">{row.company || "-"}</td>
-                  <td className="px-4 py-2 border text-sm">{new Date(row.created_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {showImportSummary && importResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="text-4xl mb-4">✅</div>
+              <h2 className="text-xl font-semibold mb-4">Import Complete!</h2>
+              
+              <div className="space-y-2 text-left mb-6">
+                <div className="flex justify-between">
+                  <span>Total Rows:</span>
+                  <span className="font-medium">{importResult.summary.totalRows}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Valid Rows:</span>
+                  <span className="font-medium">{importResult.summary.validRows}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Inserted:</span>
+                  <span className="font-medium text-green-600">{importResult.summary.inserted}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Duplicates:</span>
+                  <span className="font-medium text-yellow-600">{importResult.summary.duplicates}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Suppressed:</span>
+                  <span className="font-medium text-red-600">{importResult.summary.suppressed}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Errors:</span>
+                  <span className="font-medium text-red-600">{importResult.summary.errors}</span>
+                </div>
+              </div>
+
+              {importResult.parseErrors.length > 0 && (
+                <div className="mb-4 text-left">
+                  <h3 className="font-medium text-red-600 mb-2">Parse Errors:</h3>
+                  <div className="text-sm text-red-600 max-h-20 overflow-y-auto">
+                    {importResult.parseErrors.map((error: string, index: number) => (
+                      <div key={index}>{error}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowImportSummary(false)}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </main>
+
+      <ContactsTable />
+    </div>
   );
 }
  

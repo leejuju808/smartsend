@@ -1,48 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import { makeIcs } from "@/lib/ics";
+import { buildICS } from "@/lib/meetings/ics";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json();
     const {
-      startISO,
-      durationMin = Number(process.env.NEXT_PUBLIC_ICS_DEFAULT_DURATION_MIN || 15),
-      title = "Intro call",
-      description = "Quick intro call from SmartSend",
-      attendeeEmail,
+      title = process.env.MEETING_DEFAULT_TITLE || "Meeting",
+      description = "",
+      startISO,                 // client sends ISO in local; we convert to UTC
+      durationMin = Number(process.env.MEETING_DEFAULT_DURATION_MIN || 30),
+      organizerEmail,           // required
+      organizerName = process.env.NEXT_PUBLIC_SITE_NAME || "SmartSend",
+      location = process.env.NEXT_PUBLIC_CALENDLY_URL || "Video conference",
     } = body || {};
 
+    if (!organizerEmail) {
+      return NextResponse.json({ error: "organizerEmail required" }, { status: 400 });
+    }
     if (!startISO) {
       return NextResponse.json({ error: "startISO required" }, { status: 400 });
     }
 
-    const start = new Date(startISO);
-    const ics = makeIcs({
-      start,
-      durationMin,
+    const start = new Date(startISO); // assume client sent local ISO; Date stores UTC internally
+    const ics = buildICS({
       title,
       description,
-      organizerName: process.env.ICS_ORG_NAME || "SmartSend",
-      organizerEmail: process.env.ICS_ORG_EMAIL || "no-reply@yoursite.com",
-      attendeeEmail,
+      start,
+      durationMin,
+      organizerEmail,
+      organizerName,
+      location,
     });
 
-    const mode = (body?.mode as "download" | "base64") || "base64";
-    if (mode === "download") {
-      return new NextResponse(ics, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/calendar; charset=utf-8",
-          "Content-Disposition": `attachment; filename="meeting.ics"`,
-        },
-      });
-    }
-
-    const base64 = Buffer.from(ics, "utf-8").toString("base64");
-    return NextResponse.json({ base64, filename: "meeting.ics", mime: "text/calendar" });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "ICS generation failed" }, { status: 500 });
+    return new NextResponse(ics, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/calendar; charset=utf-8",
+        "Content-Disposition": `attachment; filename="meeting.ics"`,
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "unknown error" }, { status: 500 });
   }
 }
 

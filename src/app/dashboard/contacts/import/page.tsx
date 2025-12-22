@@ -1,143 +1,233 @@
 "use client";
-import { useState } from "react";
 
-type Row = { email: string; first_name?: string; last_name?: string; company?: string };
+import { useEffect, useMemo, useRef, useState } from "react";
+import Papa from "papaparse";
 
-export default function ImportContactsPage() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [preview, setPreview] = useState<Row[]>([]);
-  const [msg, setMsg] = useState<string>("");
+type NDJSONMsg =
+  | { type: "start"; filename: string; total: number; import_id: string; mapping: any }
+  | { type: "progress"; processed: number; total: number }
+  | { type: "log"; message: string }
+  | { type: "summary"; filename: string; import_id: string; stats: any }
+  | { type: "error"; message: string };
 
-  function dedupeByEmail(input: Row[]): Row[] {
-    const m = new Map<string, Row>();
-    for (const r of input) {
-      const email = (r.email || "").trim().toLowerCase();
-      if (!email) continue;
-      if (!m.has(email)) m.set(email, { ...r, email });
-    }
-    return Array.from(m.values());
-  }
+const guess = (headers: string[], names: string[]) =>
+  headers.find((h) => names.includes(h.toLowerCase())) ?? "";
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+export default function ImportPage() {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [preview, setPreview] = useState<Record<string, string>[]>([]);
+  const [emailKey, setEmailKey] = useState("");
+  const [firstKey, setFirstKey] = useState("");
+  const [lastKey, setLastKey] = useState("");
+  const [companyKey, setCompanyKey] = useState("");
+
+  const [busy, setBusy] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const [importId, setImportId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const percent = useMemo(() => {
+    if (!progress) return 0;
+    return Math.min(100, Math.round((100 * progress.processed) / Math.max(1, progress.total)));
+  }, [progress]);
+
+  async function handlePick() {
+    setHeaders([]); setPreview([]); setSummary(null); setLogs([]); setError(null);
+    const file = fileRef.current?.files?.[0];
     if (!file) return;
-
     const text = await file.text();
-    // Simple CSV parser: expects header line with: email,first_name,last_name,company
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    const header = (lines.shift() || "").toLowerCase().split(",").map(s => s.trim());
-    const idx = {
-      email: header.indexOf("email"),
-      first_name: header.indexOf("first_name"),
-      last_name: header.indexOf("last_name"),
-      company: header.indexOf("company"),
-    };
-    if (idx.email === -1) {
-      setMsg("CSV must include an 'email' column.");
-      return;
-    }
-    const out: Row[] = lines.map(line => {
-      const cols = line.split(",");
-      return {
-        email: cols[idx.email]?.trim() || "",
-        first_name: idx.first_name >= 0 ? cols[idx.first_name]?.trim() : undefined,
-        last_name: idx.last_name >= 0 ? cols[idx.last_name]?.trim() : undefined,
-        company: idx.company >= 0 ? cols[idx.company]?.trim() : undefined,
-      };
-    });
 
-    const dd = dedupeByEmail(out);
-    setRows(dd);
-    setPreview(dd.slice(0, 50));
-    setMsg(`Loaded ${out.length} rows → ${dd.length} unique by email. Showing first 50.`);
+    const parsed = Papa.parse<Record<string, string>>(text, { header: true, preview: 10, skipEmptyLines: true });
+    const h = (parsed.meta.fields || []).map((f: string) => (f || "").toLowerCase());
+    setHeaders(h);
+
+    const rows = (parsed.data || []).slice(0, 5).map((r: Record<string, string>) => {
+      const o: Record<string, string> = {};
+      for (const k of Object.keys(r)) o[k.toLowerCase()] = (r as any)[k] ?? "";
+      return o;
+    });
+    setPreview(rows);
+
+    // Auto-map
+    setEmailKey(guess(h, ["email", "e-mail", "work email", "business email"]) || "email");
+    setFirstKey(guess(h, ["first_name", "firstname", "first"]) || "first_name");
+    setLastKey(guess(h, ["last_name", "lastname", "last"]) || "last_name");
+    setCompanyKey(guess(h, ["company", "org", "organization"]) || "company");
   }
 
-  async function handleImport() {
-    setMsg("Importing...");
-    const res = await fetch("/api/contacts/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows }),
-    });
-    const j = await res.json();
-    if (!res.ok) {
-      setMsg(`Import failed: ${j.error || "Unknown error"}`);
-      return;
+  async function startImport(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setLogs([]); setSummary(null); setError(null); setProgress(null); setImportId(null);
+
+    const file = fileRef.current?.files?.[0];
+    if (!file) { setBusy(false); return; }
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("emailKey", emailKey);
+    form.append("firstKey", firstKey);
+    form.append("lastKey", lastKey);
+    form.append("companyKey", companyKey);
+
+    try {
+      const res = await fetch("/api/import/stream", { method: "POST", body: form });
+      if (!res.body) {
+        const text = await res.text();
+        throw new Error(text || "No response body");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n");
+        buf = parts.pop() || "";
+        for (const line of parts) {
+          if (!line.trim()) continue;
+          let msg: NDJSONMsg | null = null;
+          try { msg = JSON.parse(line); } catch { continue; }
+
+          if (msg && msg.type === "start") {
+            setImportId(msg.import_id);
+            setLogs((x) => [...x, `Started ${msg.filename} (total ${msg.total})`]);
+          } else if (msg && msg.type === "progress") {
+            setProgress({ processed: msg.processed, total: msg.total });
+          } else if (msg && msg.type === "log") {
+            setLogs((x) => [...x, msg.message]);
+          } else if (msg && msg.type === "summary") {
+            setSummary({ ...msg });
+            setProgress({ processed: msg.stats.processed, total: msg.stats.total });
+            setLogs((x) => [...x, "Done"]);
+          } else if (msg && msg.type === "error") {
+            setError(msg.message);
+          }
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message || "Import failed");
+    } finally {
+      setBusy(false);
     }
-    setMsg(`Done: received=${j.received}, unique=${j.unique}, suppressed_skipped=${j.suppressed_skipped}, upserted=${j.upserted}`);
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Import Contacts</h1>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Import Contacts (CSV)</h1>
+      <p className="text-sm text-gray-600">
+        1) Choose your CSV → 2) Map headers → 3) Import with live progress. We'll de-dupe within the file and skip suppressed emails.
+      </p>
 
-      <div className="space-y-2">
-        <input type="file" accept=".csv,text/csv" onChange={handleFile} />
-        <p className="text-sm text-gray-500">
-          CSV headers expected: <code>email,first_name,last_name,company</code>
-        </p>
-        <a 
-          href="/contacts_template.csv" 
-          download 
-          className="text-sm text-blue-600 hover:text-blue-800 underline"
+      <form onSubmit={startImport} className="space-y-4 border rounded-2xl p-4">
+        <input
+          ref={fileRef}
+          onChange={handlePick}
+          type="file"
+          accept=".csv,text/csv"
+          className="block w-full text-sm"
+          required
+        />
+
+        {headers.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Email column</label>
+              <select value={emailKey} onChange={(e) => setEmailKey(e.target.value)} className="w-full border rounded-xl p-2 text-sm">
+                {[emailKey, ...headers.filter((h) => h !== emailKey)].map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">First name</label>
+              <select value={firstKey} onChange={(e) => setFirstKey(e.target.value)} className="w-full border rounded-xl p-2 text-sm">
+                {[firstKey, ...headers.filter((h) => h !== firstKey)].map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Last name</label>
+              <select value={lastKey} onChange={(e) => setLastKey(e.target.value)} className="w-full border rounded-xl p-2 text-sm">
+                {[lastKey, ...headers.filter((h) => h !== lastKey)].map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Company</label>
+              <select value={companyKey} onChange={(e) => setCompanyKey(e.target.value)} className="w-full border rounded-xl p-2 text-sm">
+                {[companyKey, ...headers.filter((h) => h !== companyKey)].map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {preview.length > 0 && (
+          <div className="border rounded-2xl p-3 overflow-auto">
+            <div className="text-sm font-medium mb-2">Preview (first 5 rows)</div>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr>{headers.map((h) => <th key={h} className="text-left p-1 border-b">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {preview.map((r, i) => (
+                  <tr key={i} className="border-b">
+                    {headers.map((h) => <td key={h} className="p-1">{r[h] ?? ""}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy || !headers.length}
+          className="px-4 py-2 rounded-2xl shadow text-white bg-black disabled:opacity-50"
         >
-          Download CSV template
-        </a>
-        <br />
-        <a
-          href="/demo-leads.csv"
-          download
-          onClick={async () => {
-            try {
-              await fetch("/api/onboarding/complete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ step: "import_contacts" }),
-              });
-            } catch (e) {
-              console.error("Failed to mark onboarding step:", e);
-            }
-          }}
-          className="inline-block mt-2 text-sm underline text-blue-600"
-        >
-          Download demo CSV
-        </a>
-      </div>
+          {busy ? "Importing…" : "Start Import"}
+        </button>
+      </form>
 
-      {msg && <div className="p-3 rounded border text-sm">{msg}</div>}
-
-      {preview.length > 0 && (
-        <div className="border rounded">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-2">Email</th>
-                <th className="text-left p-2">First</th>
-                <th className="text-left p-2">Last</th>
-                <th className="text-left p-2">Company</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((r, i) => (
-                <tr key={i} className="border-t">
-                  <td className="p-2">{r.email}</td>
-                  <td className="p-2">{r.first_name}</td>
-                  <td className="p-2">{r.last_name}</td>
-                  <td className="p-2">{r.company}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {progress && (
+        <div className="w-full bg-gray-100 rounded-xl">
+          <div
+            className="h-3 rounded-xl"
+            style={{ width: `${percent}%`, background: "black" }}
+            aria-label="progress"
+          />
+          <div className="text-xs mt-1 text-gray-600">{progress.processed} / {progress.total} ({percent}%)</div>
         </div>
       )}
 
-      <button
-        onClick={handleImport}
-        disabled={!rows.length}
-        className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
-      >
-        Import {rows.length ? `(${rows.length})` : ""}
-      </button>
+      {logs.length > 0 && (
+        <div className="rounded-2xl border p-3">
+          <div className="text-sm font-semibold mb-1">Logs</div>
+          <ul className="text-sm list-disc pl-5 space-y-1">
+            {logs.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border p-3 text-red-600 text-sm">Error: {error}</div>
+      )}
+
+      {summary && (
+        <div className="rounded-2xl border p-4 space-y-2">
+          <div className="text-lg font-semibold">Import Summary</div>
+          <pre className="text-sm bg-gray-50 p-3 rounded overflow-auto">{JSON.stringify(summary, null, 2)}</pre>
+          {importId && (
+            <a
+              className="inline-block px-4 py-2 rounded-2xl shadow text-white bg-black"
+              href={`/api/import/rejects?import_id=${importId}`}
+            >
+              Download rejects CSV
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 } 

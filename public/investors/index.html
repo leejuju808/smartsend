@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUREV HQ — Investor Deck 2026</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-black: #0B0B0C;
+            --bg-gray: #1A1A1C;
+            --gold: #F7C948;
+            --gold-hover: #E8B836;
+            --text-white: #FFFFFF;
+            --text-gray: #A1A1AA;
+            --border-gray: #27272A;
+        }
+
+        body {
+            font-family: 'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-black) 0%, #121214 50%, var(--bg-black) 100%);
+            color: var(--text-white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
+
+        .logo {
+            font-size: 72px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--gold) 0%, #FFD700 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+
+        .tagline {
+            font-size: 24px;
+            color: var(--text-gray);
+            font-weight: 300;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: var(--text-gray);
+            margin-top: 10px;
+        }
+
+        .section {
+            margin-bottom: 100px;
+        }
+
+        .section-title {
+            font-size: 48px;
+            font-weight: 800;
+            margin-bottom: 40px;
+            border-left: 5px solid var(--gold);
+            padding-left: 20px;
+        }
+
+        .card {
+            background: rgba(26, 26, 28, 0.6);
+            border: 1px solid var(--border-gray);
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--gold);
+            transform: translateY(-5px);
+        }
+
+        .card-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gold);
+            margin-bottom: 20px;
+        }
+
+        .card-content {
+            font-size: 18px;
+            color: var(--text-gray);
+            line-height: 1.8;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .metric-card {
+            background: rgba(26, 26, 28, 0.6);
+            border: 1px solid var(--border-gray);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            border-color: var(--gold);
+            transform: scale(1.05);
+        }
+
+        .metric-value {
+            font-size: 48px;
+            font-weight: 900;
+            color: var(--gold);
+            margin-bottom: 10px;
+        }
+
+        .metric-label {
+            font-size: 14px;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .download-section {
+            background: linear-gradient(135deg, rgba(247, 201, 72, 0.1) 0%, rgba(247, 201, 72, 0.05) 100%);
+            border: 2px solid var(--gold);
+            border-radius: 24px;
+            padding: 60px;
+            text-align: center;
+            margin-top: 80px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 18px 40px;
+            background: var(--gold);
+            color: var(--bg-black);
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            background: var(--gold-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(247, 201, 72, 0.3);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--gold);
+            color: var(--gold);
+        }
+
+        .btn-outline:hover {
+            background: var(--gold);
+            color: var(--bg-black);
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .product-card {
+            background: rgba(26, 26, 28, 0.6);
+            border: 1px solid var(--border-gray);
+            border-radius: 16px;
+            padding: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .product-card:hover {
+            border-color: var(--gold);
+            transform: translateY(-5px);
+        }
+
+        .product-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .product-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gold);
+            margin-bottom: 15px;
+        }
+
+        .product-desc {
+            font-size: 16px;
+            color: var(--text-gray);
+            line-height: 1.8;
+        }
+
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .contact-item {
+            text-align: center;
+        }
+
+        .contact-label {
+            font-size: 14px;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .contact-value {
+            font-size: 18px;
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 60px 40px;
+            border-top: 1px solid var(--border-gray);
+            margin-top: 100px;
+        }
+
+        .footer-text {
+            font-size: 14px;
+            color: var(--text-gray);
+        }
+
+        .highlight {
+            color: var(--gold);
+            font-weight: 700;
+        }
+
+        .lightning {
+            font-size: 32px;
+            color: var(--gold);
+            margin-right: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 40px 20px;
+            }
+
+            .logo {
+                font-size: 48px;
+            }
+
+            .section-title {
+                font-size: 32px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+            }
+
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">⚡ AUREV HQ</div>
+            <div class="tagline">Where Intelligent Automation Meets Execution</div>
+            <div class="subtitle">The AI Operating System for Modern Business Automation</div>
+        </div>
+
+        <!-- The Problem -->
+        <div class="section">
+            <h2 class="section-title">The Problem</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p>SMBs waste time managing cold outreach, operations, and AI tools separately. Sales teams spend 60% of time on manual prospecting while operations teams juggle 5+ disconnected tools. AI agents are deployed in silos with no unified workflow, causing lost cross-functional insights and multiple subscriptions for related workflows.</p>
+                    <br>
+                    <p><strong class="highlight">$42B TAM</strong> in SMB automation. 33M SMBs in US alone. Average SMB uses 5+ separate tools.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- The Solution -->
+        <div class="section">
+            <h2 class="section-title">The Solution</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p><strong class="highlight">One Unified OS:</strong> SmartSend ⚡ OpsGrid 🧩 Agent Cloud 🤖 — connected under AUREV HQ</p>
+                    <br>
+                    <p>Replace 5+ tools with one intelligent OS. Your business runs autonomously while your team focuses on closing deals.</p>
+                </div>
+            </div>
+            
+            <div class="products-grid">
+                <div class="product-card">
+                    <div class="product-icon">⚡</div>
+                    <div class="product-name">SmartSend</div>
+                    <div class="product-desc">AI-powered cold email automation with unified inbox, auto-follow-ups, and campaign analytics.</div>
+                </div>
+                <div class="product-card">
+                    <div class="product-icon">🧩</div>
+                    <div class="product-name">OpsGrid</div>
+                    <div class="product-desc">Workflow automation and operations orchestration with CRM integrations and task automation.</div>
+                </div>
+                <div class="product-card">
+                    <div class="product-icon">🤖</div>
+                    <div class="product-name">Agent Cloud</div>
+                    <div class="product-desc">AI agent marketplace with pre-built agents, custom deployment, and revenue sharing.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traction -->
+        <div class="section">
+            <h2 class="section-title">Traction</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">100+</div>
+                    <div class="metric-label">Active Orgs</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">$85K</div>
+                    <div class="metric-label">MRR</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">8%</div>
+                    <div class="metric-label">MoM Growth</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value"><5%</div>
+                    <div class="metric-label">Churn</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">92%</div>
+                    <div class="metric-label">AI Reply Accuracy</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">500+</div>
+                    <div class="metric-label">AI Replies/Day</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Business Model -->
+        <div class="section">
+            <h2 class="section-title">Business Model</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p><strong class="highlight">SaaS + Usage-based + Reseller Tiers</strong></p>
+                    <br>
+                    <p><strong>Revenue Streams:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 15px;">
+                        <li>Subscription Revenue (60%) - $99-$499/mo plans</li>
+                        <li>Usage-based Billing (25%) - AI generation, workflow executions, agent deployments</li>
+                        <li>Reseller/Agency Tiers (15%) - 20% commissions, white-label options</li>
+                    </ul>
+                    <br>
+                    <p><strong class="highlight">LTV/CAC = 5.4x</strong> | Payback <30 days</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Opportunity -->
+        <div class="section">
+            <h2 class="section-title">Market Opportunity</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p><strong class="highlight">$42B Global SMB Automation TAM</strong></p>
+                    <br>
+                    <p><strong>Market Breakdown:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 15px;">
+                        <li>Cold Email Tools: $2.8B (17%)</li>
+                        <li>Workflow Automation: $8B (19%)</li>
+                        <li>CRM Software: $7.5B (18%)</li>
+                        <li>AI Agent Platforms: $23.7B (56%)</li>
+                    </ul>
+                    <br>
+                    <p>18% CAGR growth (2024-2029). First AI operating system to combine autonomous communication + operations + agent deployment.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vision -->
+        <div class="section">
+            <h2 class="section-title">Vision 2028</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p><strong class="highlight">"The Salesforce for SMB Automation"</strong></p>
+                    <br>
+                    <p><strong>By 2028:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 15px;">
+                        <li>1M+ automated orgs</li>
+                        <li>$50M+ ARR run rate</li>
+                        <li>International expansion</li>
+                        <li>Full autonomous business stack</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- The Ask -->
+        <div class="section">
+            <h2 class="section-title">The Ask</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p><strong class="highlight">Seeking: $1M Seed Round</strong></p>
+                    <br>
+                    <p><strong>Use of Funds:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 15px;">
+                        <li>Product Development: 50% ($500K) - Complete OpsGrid & Agent Cloud</li>
+                        <li>Team Expansion: 35% ($350K) - 4 engineers, designer, customer success</li>
+                        <li>Growth & Marketing: 15% ($150K) - Content, paid acquisition, partnerships</li>
+                    </ul>
+                    <br>
+                    <p><strong>18-Month Milestones:</strong> $100K MRR → $150K MRR → $200K MRR ($2.4M ARR)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Downloads -->
+        <div class="download-section">
+            <h2 class="section-title" style="border: none; padding: 0; text-align: center;">Investor Materials</h2>
+            <p style="font-size: 18px; color: var(--text-gray); margin-bottom: 40px;">Download our complete investor package</p>
+            <a href="/docs/investor/AUREV_HQ_2026_Investor_Deck.md" class="btn" target="_blank">Download Pitch Deck</a>
+            <a href="/docs/investor/AUREV_HQ_2026_One_Pager.md" class="btn btn-outline" target="_blank">Download One-Pager</a>
+            <br>
+            <a href="/docs/investor/AUREV_HQ_2026_Data_Sheet.md" class="btn btn-outline" target="_blank">Download Data Sheet</a>
+            <a href="/docs/investor/AUREV_HQ_2026_Use_of_Funds.md" class="btn btn-outline" target="_blank">Download Use of Funds</a>
+        </div>
+
+        <!-- Contact -->
+        <div class="section">
+            <h2 class="section-title">Contact</h2>
+            <div class="contact-grid">
+                <div class="contact-item">
+                    <div class="contact-label">Website</div>
+                    <div class="contact-value">aurevhq.com</div>
+                </div>
+                <div class="contact-item">
+                    <div class="contact-label">Email</div>
+                    <div class="contact-value">investors@aurevhq.com</div>
+                </div>
+                <div class="contact-item">
+                    <div class="contact-label">Demo</div>
+                    <div class="contact-value">aurevhq.com/demo</div>
+                </div>
+                <div class="contact-item">
+                    <div class="contact-label">LinkedIn</div>
+                    <div class="contact-value">/company/aurev-hq</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <div class="footer-text">
+            ⚡ AUREV HQ • Where Intelligent Automation Meets Execution
+        </div>
+    </div>
+</body>
+</html>
+

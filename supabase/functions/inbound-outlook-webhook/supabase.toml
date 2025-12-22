@@ -1,0 +1,15 @@
+name = "inbound-outlook-webhook"
+
+[functions."inbound-outlook-webhook"]
+verify_jwt = false
+
+
+
+
+
+
+
+
+
+
+

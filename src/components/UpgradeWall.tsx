@@ -51,7 +51,7 @@ export default function UpgradeWall() {
       <div className="bg-white rounded-xl p-6 max-w-md text-center space-y-4 shadow-xl">
         <h2 className="text-xl font-bold">🔥 {promo.percent}% off — Today Only</h2>
         <p className="text-sm text-gray-600">
-          Unlock unlimited replies, bigger imports, and full extension access.
+          Unlock higher reply limits, bigger imports, and full extension access.
         </p>
 
         <div className="text-lg font-mono">

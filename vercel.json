@@ -1,0 +1,169 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/deliver",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/scheduler",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/worker",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/send-queue",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/send",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/tick",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/outbox/send",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/providers/gmail/poll",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/inbound/gmail/pull?key=${CRON_SECRET}",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/auth/gmail/refresh",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/gmail/watch/renew",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/cadence-send",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/sender/tick",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/queue/worker",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/contacts-auto-merge",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/tags/daily-refresh",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/tags/storm-refresh",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/tags/import-refresh",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/activity/cleanup",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/weather-monitor",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/tasks/followup-cycle?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/tasks/urgency-update?key=${CRON_SECRET}",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/review-followups",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/onboarding/milestone-tracker?key=${CRON_SECRET}",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/onboarding/trial-nudge?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/billing-recovery?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/ab-testing?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/supplier-delivery-reminders?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/collections/process-overdue?key=${CRON_SECRET}",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/install-day-messages?key=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/install-day-delay-detection?key=${CRON_SECRET}",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/revival-engine?key=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/revival/detect-dead-leads",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/revival/proposal-update",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/safety-reminders?key=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/payment-reminders?key=${CRON_SECRET}",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/daily-briefing?key=${CRON_SECRET}",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/warranty/expiration-alerts?key=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/warranty/customer-checkins?key=${CRON_SECRET}",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/performance-health?key=${CRON_SECRET}",
+      "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/cron/policy-enforce?key=${CRON_SECRET}",
+      "schedule": "5 6 * * *"
+    }
+  ]
+}
+

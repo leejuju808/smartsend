@@ -1,148 +1,189 @@
-'use client'
+"use client";
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { Mail, ArrowLeft, Eye, EyeOff } from 'lucide-react'
-import { createClientComponentClient } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+type LoginMode = "magic-link" | "password";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  
-  const supabase = createClientComponentClient()
-  const router = useRouter()
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/dashboard";
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+  const [mode, setMode] = useState<LoginMode>("magic-link");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
 
-    try {
-      console.log('Attempting login with email:', email)
-      
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+  const signInWithMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-      if (error) {
-        console.error('Login error:', error.message)
-        setError(error.message)
-      } else {
-        console.log('Login successful, redirecting to dashboard')
-        router.push('/dashboard')
-      }
-    } catch (err) {
-      console.error('Network error:', err)
-      setError('Network error: Unable to connect to authentication service')
-    } finally {
-      setLoading(false)
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${location.origin}${redirectTo}` },
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      setSent(true);
+      setLoading(false);
     }
-  }
+  };
+
+  const signInWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const { error, data } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      // Success - redirect will happen automatically via middleware
+      router.push(redirectTo);
+      router.refresh();
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <Link href="/" className="flex items-center justify-center mb-8">
-            <ArrowLeft className="h-5 w-5 text-gray-600 mr-2" />
-            <span className="text-gray-600">Back to home</span>
-          </Link>
-          
-          <div className="flex justify-center">
-            <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center">
-              <Mail className="h-8 w-8 text-blue-600" />
-            </div>
-          </div>
-          
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Welcome back to SmartSend
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-black text-white px-6">
+      <div className="bg-gray-950 border border-gray-800 p-8 rounded-2xl max-w-md w-full">
+        <h1 className="text-2xl font-bold mb-2">Sign in to SmartSend ⚡</h1>
+        <p className="text-gray-400 mb-6">
+          {mode === "magic-link"
+            ? "We'll send you a secure magic link."
+            : "Enter your email and password."}
+        </p>
+
+        {/* Mode Toggle */}
+        <div className="flex gap-2 mb-6 p-1 bg-gray-900 rounded-lg">
+          <button
+            type="button"
+            onClick={() => {
+              setMode("magic-link");
+              setError("");
+              setSent(false);
+            }}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+              mode === "magic-link"
+                ? "bg-yellow-500 text-black"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Magic Link
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("password");
+              setError("");
+              setSent(false);
+            }}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+              mode === "password"
+                ? "bg-yellow-500 text-black"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Password
+          </button>
         </div>
-        
-        <form className="mt-8 space-y-6" onSubmit={handleSignIn}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm">
+            {error}
+          </div>
+        )}
+
+        {mode === "magic-link" ? (
+          sent ? (
+            <div className="text-green-400 p-4 bg-green-900/20 border border-green-700 rounded-lg">
+              Check your email — magic link sent.
+            </div>
+          ) : (
+            <form onSubmit={signInWithMagicLink} className="space-y-4">
               <input
-                id="email"
-                name="email"
                 type="email"
-                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Enter your email"
+                placeholder="you@company.com"
+                className="w-full px-4 py-2 rounded-lg text-black"
+                disabled={loading}
               />
-            </div>
-            
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Enter your password"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
-              {error}
-            </div>
-          )}
-
-          <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-yellow-500 text-black rounded-lg px-4 py-2 font-semibold hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Sending..." : "Send Magic Link"}
+              </button>
+            </form>
+          )
+        ) : (
+          <form onSubmit={signInWithPassword} className="space-y-4">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              className="w-full px-4 py-2 rounded-lg text-black"
+              disabled={loading}
+            />
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full px-4 py-2 rounded-lg text-black"
+              disabled={loading}
+            />
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-yellow-500 text-black rounded-lg px-4 py-2 font-semibold hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? "Signing in..." : "Sign In"}
             </button>
-          </div>
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  // TODO: Implement forgot password flow
+                  alert("Use Magic Link to sign in, or contact support to reset access.");
+                }}
+                className="text-sm text-gray-400 hover:text-white underline"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          </form>
+        )}
 
-          <div className="text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
-                Sign up
-              </Link>
-            </p>
-          </div>
-        </form>
+        {/* Create Account Link (Owner only - shown on signup page) */}
+        <div className="mt-6 text-center text-sm text-gray-400">
+          Don't have an account?{" "}
+          <a
+            href="/signup"
+            className="text-yellow-500 hover:text-yellow-400 underline"
+          >
+            Create Account
+          </a>
+        </div>
       </div>
     </div>
-  )
+  );
 } 

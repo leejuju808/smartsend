@@ -1,52 +1,31 @@
-import 'server-only'
-import { cookies } from 'next/headers'
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { createAdminClient } from '@/lib/supabase'
-
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-
-async function resolveInviterIdByCode(code: string): Promise<string | null> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('referral_code', code)
-    .maybeSingle()
-  return (data as any)?.id || null
-}
-
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url)
-  const code = (url.searchParams.get('code') || '').trim()
-  if (!code) return NextResponse.json({ ok: false, error: 'missing_code' }, { status: 400 })
-  const jar = cookies()
-  jar.set('ss_ref_code', code, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 90 })
-  return NextResponse.json({ ok: true })
-}
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}))
-  const code = (body.code || '').toString().trim()
-  if (!code) return NextResponse.json({ ok: false, error: 'missing_code' }, { status: 400 })
+  const supabase = createRouteHandlerClient({ cookies });
+  const { token } = await req.json() as { token: string };
 
-  const supabase = createRouteHandlerClient({ cookies })
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    // Not logged in yet: persist cookie for later association
-    const res = NextResponse.json({ ok: true, deferred: true })
-    res.cookies.set('ss_ref_code', code, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 90 })
-    return res
-  }
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
 
-  const inviterId = await resolveInviterIdByCode(code)
-  if (!inviterId || inviterId === user.id) return NextResponse.json({ ok: true, skipped: true })
+  const { data: inv, error } = await supabase
+    .from("workspace_invites")
+    .select("workspace_id, role, expires_at, accepted_at")
+    .eq("token", token).maybeSingle();
+  if (error || !inv) return NextResponse.json({ error: "Invalid invite" }, { status: 400 });
+  if (inv.accepted_at) return NextResponse.json({ error: "Invite already used" }, { status: 400 });
+  if (new Date(inv.expires_at) < new Date()) return NextResponse.json({ error: "Invite expired" }, { status: 400 });
 
-  const admin = createAdminClient()
-  await admin
-    .from('referrals')
-    .upsert({ user_id: inviterId, referred_id: user.id }, { onConflict: 'user_id,referred_id' })
-  return NextResponse.json({ ok: true })
+  // Upsert member
+  const { error: upErr } = await supabase.from("workspace_members").upsert({
+    workspace_id: inv.workspace_id, user_id: auth.user.id, role: inv.role
+  });
+  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+
+  await supabase.from("workspace_invites").update({
+    accepted_by: auth.user.id, accepted_at: new Date().toISOString()
+  }).eq("token", token);
+
+  return NextResponse.json({ ok: true, workspace_id: inv.workspace_id });
 }
-

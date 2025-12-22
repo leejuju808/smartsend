@@ -1,27 +1,18 @@
-import pino from 'pino'
-import { createAdminClient } from './supabase'
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
+export async function logAction(workspaceId: string, userEmail: string, action: string, meta: Record<string, any> = {}) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: () => cookieStore }
+  );
 
-export function log(event: string, fields?: Record<string, unknown>) {
-  try {
-    logger.info({ event, ...(fields || {}) })
-  } catch {
-    // no-op
-  }
-}
-
-export async function error(event: string, fields?: Record<string, unknown>) {
-  try {
-    logger.error({ event, ...(fields || {}) })
-  } catch {
-    // Fallback to audit_log table if available
-    try {
-      const sb = createAdminClient()
-      await sb.from('analytics_events').insert({ name: 'logger_error', context: { event, ...(fields || {}) } })
-    } catch {
-      // last resort
-      console.error(`[error] ${event}`)
-    }
-  }
+  await supabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    user_email: userEmail,
+    action,
+    meta,
+  });
 }

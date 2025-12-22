@@ -1,4 +1,6 @@
 email,first_name,last_name,company
 john.doe@example.com,John,Doe,Acme Corp
 jane.smith@example.com,Jane,Smith,Tech Solutions
-bob.wilson@example.com,Bob,Wilson,Startup Inc 
+bob.wilson@example.com,Bob,Wilson,Startup Inc
+sarah.jones@example.com,Sarah,Jones,Digital Agency
+mike.brown@example.com,Mike,Brown,Consulting LLC 

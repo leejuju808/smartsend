@@ -30,10 +30,13 @@ export default function GoProButton({ userId, priceId }: { userId: string; price
   async function startCheckout() {
     try {
       setPending(true)
+      // Get referral code from localStorage if available
+      const refCode = typeof window !== 'undefined' ? localStorage.getItem('referrer') : null
+      
       const res = await fetch('/api/billing/create-session', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userId, priceId }),
+        body: JSON.stringify({ userId, priceId, refCode }),
       })
       const { url, error } = await res.json()
       if (!res.ok || error) throw new Error(error || 'Failed to start checkout')

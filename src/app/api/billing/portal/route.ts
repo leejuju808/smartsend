@@ -1,30 +1,71 @@
-import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
-import { getSubscriptionStatus } from "@/lib/subscription";
-import { supabaseAdmin } from "@/server/supabase";
+import { NextRequest, NextResponse } from 'next/server';
+import { stripe } from '@/lib/billing/stripe';
+import { createSupabaseServer } from '@/lib/supabaseServer';
+import { cookies } from 'next/headers';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" });
+async function getCurrentOrgId(supabase: any, userId: string): Promise<string | null> {
+  const cookieStore = await cookies();
+  const orgId = cookieStore.get('current_org_id')?.value || cookieStore.get('org_id')?.value;
+  
+  if (orgId) return orgId;
 
-export async function POST(_req: NextRequest) {
-  const { userId, status } = await getSubscriptionStatus();
-  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-
-  // Find stripe_customer_id for this user
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('stripe_customer_id')
-    .eq('id', userId)
+  const { data: membership } = await supabase
+    .from('org_members')
+    .select('org_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
-  if (error || !profile?.stripe_customer_id) {
-    return NextResponse.json({ error: "No Stripe customer on file" }, { status: 400 });
-  }
-
-  const session = await stripe.billingPortal.sessions.create({
-    customer: profile.stripe_customer_id,
-    return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing`,
-  });
-
-  return NextResponse.json({ url: session.url });
+  return membership?.org_id || null;
 }
 
+/**
+ * POST /api/billing/portal
+ * Create a Stripe Customer Portal session
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createSupabaseServer();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgId = await getCurrentOrgId(supabase, user.id);
+    if (!orgId) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 404 });
+    }
+
+    // Get billing info
+    const { data: billing } = await supabase
+      .from('org_billing')
+      .select('stripe_customer_id')
+      .eq('org_id', orgId)
+      .single();
+
+    if (!billing?.stripe_customer_id) {
+      return NextResponse.json(
+        { error: 'No Stripe customer found. Please subscribe first.' },
+        { status: 404 }
+      );
+    }
+
+    // Create portal session
+    const session = await stripe.billingPortal.sessions.create({
+      customer: billing.stripe_customer_id,
+      return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/settings?section=billing`,
+    });
+
+    return NextResponse.json({
+      url: session.url,
+    });
+  } catch (error: any) {
+    console.error('Error creating portal session:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to create portal session' },
+      { status: 500 }
+    );
+  }
+}

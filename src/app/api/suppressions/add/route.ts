@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
-import { addSuppression } from "@/server/suppression";
+import { createClient } from "@supabase/supabase-js";
 
-function getUserId(req: Request) {
-  return new URL(req.url).searchParams.get("userId");
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+function normEmail(e?: string) {
+  if (!e) return null;
+  const v = e.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return null;
+  return v;
 }
 
 export async function POST(req: Request) {
-  const userId = getUserId(req);
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { emails, reason } = await req.json().catch(() => ({}));
-  if (!Array.isArray(emails) || !emails.length)
-    return NextResponse.json({ error: "emails[]" }, { status: 400 });
-  const r = (reason === "complaint" ? "complaint" : "manual") as "complaint" | "manual";
-  for (const raw of emails) {
-    const email = String(raw || "").trim().toLowerCase();
-    if (!email.includes("@")) continue;
-    await addSuppression({ owner: userId, email, reason: r, source: "manual" });
-  }
-  return NextResponse.json({ ok: true });
-}
+  try {
+    const { email, reason } = await req.json();
+    const norm = normEmail(email);
+    if (!norm) return NextResponse.json({ success: false, error: "Invalid email" }, { status: 400 });
 
+    const { error } = await supabase.from("suppressions").upsert(
+      { email: norm, reason: reason || "manual" },
+      { onConflict: "email" }
+    );
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error(e);
+    return NextResponse.json({ success: false, error: e?.message || "Unknown error" }, { status: 500 });
+  }
+}

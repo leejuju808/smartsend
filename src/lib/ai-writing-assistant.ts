@@ -13,6 +13,7 @@ export interface OptimizationRequest {
   content: EmailContent
   focusAreas?: ('subject' | 'body' | 'tone' | 'personalization')[]
   targetScore?: number
+  templateId?: string
 }
 
 export class AIWritingAssistant {

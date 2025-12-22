@@ -1,0 +1,7 @@
+email,first_name,last_name,company
+a@ex.com,A,One,Acme
+a@ex.com,A,One,Acme
+b@ex.com,B,Two,Acme
+suppressed@ex.com,C,Three,Nope
+bademail,Bad,,,
+test@example.com,Test,User,TestCo 

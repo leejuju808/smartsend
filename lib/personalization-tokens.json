@@ -1,0 +1,70 @@
+{
+  "tokens": {
+    "{homeowner_name}": "First name of the homeowner",
+    "{city}": "City where homeowner lives",
+    "{service_area}": "Roofer's primary service area",
+    "{roof_issue}": "Detected roof problem if known",
+    "{roof_type}": "Asphalt / Metal / Tile",
+    "{recent_weather_event}": "Storm, hail, heavy rain etc.",
+    "{company_name}": "Roofer business name",
+    "{owner_name}": "Owner's name",
+    "{season}": "Current season (spring, summer, fall, winter)",
+    "{street_or_area}": "Street address or area of homeowner"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

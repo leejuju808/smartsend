@@ -1,0 +1,5 @@
+email,name,company,title,phone,tags
+ceo@example.com,Ada Lovelace,Analytical Engines,CEO,,warm|demo
+cto@example.com,Alan Turing,Computation Ltd,CTO,,cold|ai
+marketing@startup.io,Jane Smith,Tech Startup Inc,Marketing Director,+1-555-0123,lead|warm
+sales@enterprise.com,John Doe,Enterprise Corp,Sales Manager,+1-555-0456,cold|enterprise

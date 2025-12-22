@@ -1,89 +1,111 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { canManageMembers } from "@/utils/permissions";
+// Block 416 — Team Collaboration v1: Workspace Invite API
+// app/api/workspaces/invite/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { workspaceId, email, role } = await req.json() as { workspaceId: string; email: string; role?: string };
-    if (!workspaceId || !email) {
-      return NextResponse.json({ error: "workspaceId and email are required" }, { status: 400 });
-    }
-
-    // Authenticate caller via Supabase access token (App Router context)
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : undefined;
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { email, role } = await req.json();
     
-    const { data: authedUser } = await supabase.auth.getUser(token);
-    const callerId = (authedUser?.user as any)?.id as string | undefined;
-    if (!callerId) {
+    if (!email) {
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    }
+
+    if (!role || !["owner", "manager", "member"].includes(role)) {
+      return NextResponse.json({ error: "Invalid role. Must be owner, manager, or member" }, { status: 400 });
+    }
+
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check caller membership role for this workspace
-    const { data: callerMembership } = await supabase
+    // Get workspace of the requester
+    const { data: workspace } = await supabase
       .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", callerId)
-      .maybeSingle();
-    const callerRole = (callerMembership as any)?.role as string | undefined;
-    if (!callerRole || !canManageMembers(callerRole)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      .select("workspace_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!workspace) {
+      return NextResponse.json({ error: "No workspace found" }, { status: 400 });
     }
 
-    const desiredRole = (role || "member") as string;
-    if (!["owner", "admin", "member"].includes(desiredRole)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
-    }
+    const workspace_id = workspace.workspace_id;
 
-    // Enforce seat limit before inviting
-    const { data: ws } = await supabase
-      .from("workspaces")
-      .select("id, seat_limit, member_count")
-      .eq("id", workspaceId)
-      .maybeSingle();
-    if (!ws) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    if ((ws as any).member_count >= (ws as any).seat_limit) {
-      return NextResponse.json({ error: "Seat limit reached. Upgrade your plan to add more members." }, { status: 403 });
-    }
-
-    // Find user by email in profiles
-    const { data: user } = await supabase
+    // Check if user already exists
+    const { data: existingUser } = await supabase
       .from("profiles")
       .select("id")
-      .ilike("email", email)
+      .eq("email", email.toLowerCase())
       .maybeSingle();
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (existingUser) {
+      // User exists - add them directly
+      const { error: insertError } = await supabase
+        .from("workspace_members")
+        .insert({
+          workspace_id,
+          user_id: existingUser.id,
+          role,
+        })
+        .select();
+
+      if (insertError) {
+        // Check if it's a duplicate
+        if (insertError.code === "23505") {
+          return NextResponse.json({ error: "User is already a member" }, { status: 400 });
+        }
+        return NextResponse.json({ error: insertError.message }, { status: 400 });
+      }
+
+      // Log the action
+      await supabase.rpc("log_action", {
+        p_actor_id: user.id,
+        p_workspace_id: workspace_id,
+        p_action: "team_member_added",
+        p_target_type: "workspace_member",
+        p_target_id: existingUser.id,
+        p_details: { email, role }
+      });
+
+      return NextResponse.json({ success: true, added: true });
+    } else {
+      // User doesn't exist - store email for pending invite
+      const { error: insertError } = await supabase
+        .from("workspace_members")
+        .insert({
+          workspace_id,
+          invited_email: email.toLowerCase(),
+          role,
+        })
+        .select();
+
+      if (insertError) {
+        // Check if it's a duplicate
+        if (insertError.code === "23505") {
+          return NextResponse.json({ error: "Invite already sent to this email" }, { status: 400 });
+        }
+        return NextResponse.json({ error: insertError.message }, { status: 400 });
+      }
+
+      // Log the action
+      await supabase.rpc("log_action", {
+        p_actor_id: user.id,
+        p_workspace_id: workspace_id,
+        p_action: "team_member_invited",
+        p_target_type: "workspace_member",
+        p_target_id: null,
+        p_details: { email: email.toLowerCase(), role }
+      });
+
+      return NextResponse.json({ success: true, added: false });
     }
-
-    const { error } = await supabase.from("workspace_members").insert([
-      { workspace_id: workspaceId, user_id: (user as any).id, role: desiredRole },
-    ]);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Increment member_count on success (best-effort)
-    await supabase
-      .from("workspaces")
-      .update({ member_count: ((ws as any).member_count ?? 0) + 1 })
-      .eq("id", workspaceId);
-
-    return NextResponse.json({ success: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
+  } catch (error) {
+    console.error("Error inviting team member:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-} 
+}

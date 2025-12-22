@@ -16,7 +16,7 @@ export default function UpgradeCelebration() {
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
       // burst 2 (stagger)
       setTimeout(() => confetti({ particleCount: 90, spread: 60, angle: 60, origin: { x: 0 } }), 200);
-      setTimeout(() => confetti({ particleCount: 90, spread: 60, angle: 120, origin: { x: 1 } }, 200);
+      setTimeout(() => confetti({ particleCount: 90, spread: 60, angle: 120, origin: { x: 1 } }), 200);
 
       // optional: small toast
       try {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { isSalesModeEnabled } from "@/lib/feature-flags";
 
 type Steps = {
   import_contacts?: boolean;
@@ -9,6 +10,9 @@ type Steps = {
 };
 
 export default function DemoTourBanner() {
+  // BLOCK 281000 — Sales Mode: disable demo-only tours/toggles.
+  if (isSalesModeEnabled()) return null;
+
   const [steps, setSteps] = useState<Steps>({});
   const [loading, setLoading] = useState(true);
 

@@ -1,0 +1,12 @@
+Email,First Name,Last Name,Company,Title
+ada@example.com,Ada,Lovelace,Analytical Engines,CTO
+Ada@Example.com,Ada,Lovelace,Different Corp,CTO
+grace@example.com,Grace,Hopper,Navy,Rear Admiral
+GRACE@EXAMPLE.COM,Grace,Hopper,Navy,Admiral
+bounced@blocked.com,Bounce,Case,Acme,Manager
+test@blocked.com,Test,User,Another Co,Developer
+invalid-email,Invalid,User,BadCo,CEO
+@nodomain.com,No,Local,Test,Manager
+noatsign.com,No,At,Test,Developer
+valid@email.co,Valid,User,"Company, Inc.","VP, Sales"
+quoted@test.com,Quoted,"Name, Jr.",Regular,Engineer

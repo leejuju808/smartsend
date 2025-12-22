@@ -1,0 +1,15 @@
+[functions.send-tick]
+verify_jwt = false
+
+[functions.send-tick.schedule]
+cron = "*/1 * * * *"
+
+[functions.stripe-create-checkout]
+verify_jwt = true
+
+[functions.stripe-portal]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
+

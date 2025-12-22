@@ -1,0 +1,12 @@
+[functions.gmail-sync]
+verify_jwt = false
+
+[functions.gmail-sync.environment]
+CRON_SECRET = "set-a-random-string"
+
+[[cron.jobs]]
+schedule = "*/2 * * * *"
+endpoint = "/gmail-sync?key=set-a-random-string"
+
+
+

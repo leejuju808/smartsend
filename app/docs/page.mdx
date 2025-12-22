@@ -1,0 +1,219 @@
+import { useMDXComponents } from "@/mdx-components";
+
+export const metadata = {
+  title: "SmartSend AI Docs",
+  description: "Cold Email Operating System — MVP Docs",
+};
+
+export default function MDXLayout({ children }) { return <>{children}</>; }
+export { useMDXComponents };
+
+/* -------------------------------------------------------------------------------- */
+
+# SmartSend AI ⚡ — Cold Email OS
+
+End-to-end cold outreach: **Import → Schedule/Send → Queue (Retry/Cancel) → Auto-Reply Detection → Dashboard + Billing.**
+
+<a id="stack" />
+
+## Stack
+
+- **Frontend**: Next.js (App Router) + Tailwind + shadcn/ui  
+- **Backend**: Supabase (Postgres, Auth, RLS, Edge Functions)  
+- **Billing**: Stripe (Checkout + Billing Portal)  
+- **AI**: OpenAI (reply classification)  
+- **Integrations**: Postmark / Gmail / Outlook webhooks (Zapier/Make or native)  
+
+<a id="features" />
+
+## Key Features
+
+- CSV Lead Importer (mapping, Zod validation, dedupe, downloadable **error CSV**)
+- Send Queue with **Bulk Retry**, **Cancel**, filters + **CSV export**
+- **Auto-Reply Detection** → marks lead `replied`, logs event, cancels future steps
+- Logs Drawer + Row Actions (View Logs / Copy Error / Retry / Cancel)
+- **Billing gates**: Starter (1 campaign, 2k rows/import), Pro (configurable)
+- UX polish: status pills, attempt chip, skeletons, empty states
+
+<a id="env" />
+
+## Environment Variables
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SITE_URL=
+
+OPENAI_API_KEY=                # (set in Supabase Function env)
+REPLY_WEBHOOK_SECRET=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_PRO=price_xxx
+```
+
+<a id="db-funcs" />
+
+Database & Functions
+
+Run these SQL files in order (Supabase SQL editor):
+
+001_leads_guardrails.sql — unique (campaign_id, email)
+
+002_retry_failed_queue.sql — RPC retry_failed_queue(p_ids uuid[])
+
+003_cancel_queue.sql — RPC cancel_queue(p_ids uuid[])
+
+004_reply_detection.sql — columns + inbound_logs + send_queue_view
+
+005_logs_view.sql — campaign_logs_view (+ index on meta->>'queue_id')
+
+006_campaigns_view.sql — lightweight list
+
+007_billing_subscriptions.sql — billing table
+
+Edge Function:
+
+```text
+supabase functions deploy replyDetection --no-verify-jwt
+# Set OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, REPLY_WEBHOOK_SECRET in Function env.
+```
+
+<a id="api" />
+
+API Routes (App Router)
+
+Leads
+
+POST /api/leads/import — validate + dedupe + insert; returns counts + errorCsv
+
+Queue
+
+POST /api/queue/retry — call RPC
+
+POST /api/queue/cancel — call RPC
+
+GET  /api/queue/search — filters: status, campaignId, start, end
+
+GET  /api/queue/export — CSV of filtered view
+
+Logs
+
+GET  /api/logs/search — queueId or leadId
+
+Campaigns
+
+GET  /api/campaigns/list
+
+POST /api/campaigns/create — plan-gated
+
+Billing
+
+POST /api/billing/checkout — Stripe Checkout (Pro)
+
+POST /api/billing/portal — Billing Portal
+
+POST /api/billing/webhook — Stripe webhook
+
+GET  /api/billing/me — entitlements (plan, maxCampaigns, maxImportRows)
+
+<a id="reply-detection" />
+
+Reply Detection (Webhook → Edge Function)
+
+POST JSON:
+
+```json
+{
+  "provider": "postmark|gmail|outlook|sendgrid|mailgun",
+  "thread_id": "provider-thread-id",
+  "message_id": "message-id",
+  "subject": "Re: ...",
+  "body": "Plain text body",
+  "from_email": "prospect@company.com",
+  "to_email": "you@smartsend.ai"
+}
+```
+
+The function classifies with OpenAI; if human reply → set leads.status='replied', log lead_replied, cancel queued steps.
+
+Security: Must include header X-Reply-Secret: <REPLY_WEBHOOK_SECRET>.
+
+<a id="ui" />
+
+UI Highlights
+
+LeadImportSheet: drop → map → import → download errors
+
+QueueTable: header checkbox, Retry Failed, Cancel Selected, filters, CSV export
+
+RowActions: View Logs / Copy Error / Retry / Cancel
+
+LogsDrawer: activity feed
+
+Billing: Starter/Pro gating with Upgrade modal
+
+Polish: status pills, attempt chip, skeleton + empty states
+
+<a id="e2e" />
+
+E2E “Happy Path” Test (5 min)
+
+Seed campaign + lead + sent queue row (with thread_id)
+
+POST a fake reply to Edge Function (cURL)
+
+Verify:
+
+leads.status = 'replied'
+
+campaign_logs has lead_replied
+
+send_queue future steps canceled
+
+<a id="billing" />
+
+Billing Gates — QA
+
+GET /api/billing/me → limits reflect plan
+
+Starter: 1 campaign; 2k rows/import; graceful Upgrade modal on limit
+
+After Pro checkout + webhook → gates lift
+
+<a id="security" />
+
+Security Notes
+
+Edge Function requires X-Reply-Secret
+
+Keep Service Role key server-only
+
+Use RLS on leads, send_queue, campaigns, campaign_logs
+
+<a id="troubleshooting" />
+
+Troubleshooting
+
+Reply not matching: ensure you store provider thread_id on send (falls back to from_email)
+
+401 on webhook: secret header missing/incorrect
+
+Stripe webhook: run stripe listen locally and set STRIPE_WEBHOOK_SECRET
+
+Import issues: check downloadable error CSV
+
+---
+
+## 5) Optional: marketing route alias
+
+If you want docs under your marketing group (e.g., `/app/(marketing)/docs`), just move the `docs` folder there—Next will keep the route as `/docs`.
+
+---
+
+### Done
+
+You now have a first-class **/docs** page inside the app—clean typography, anchors, and a sticky sidebar. If you want a dark hero + search bar at the top, say the word and I’ll add a minimal docs search (client-side) plus a branded hero.
+
+

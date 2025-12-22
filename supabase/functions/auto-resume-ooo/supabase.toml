@@ -1,0 +1,8 @@
+[functions.auto-resume-ooo]
+verify_jwt = false
+schedule = "0 14 * * *"
+
+
+
+
+

@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { getServerSupabase } from '@/lib/supabase/server'
 import { AIWritingAssistant, OptimizationRequest } from '@/lib/ai-writing-assistant'
-import { requireQuota, recordUserUsage } from '@/lib/usage'
+import { requireQuota, recordUsage } from '@/lib/usage'
+import { requireWorkspace } from '@/lib/workspace/withWorkspace'
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const supabase = createRouteHandlerClient({ cookies })
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Verify authentication and workspace access
+    const gate = await requireWorkspace(request)
+    if ("error" in gate) return gate.error
     
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { user, workspace_id } = gate
+    const supabase = getServerSupabase()
 
     // Parse request body
     const body: OptimizationRequest = await request.json()
@@ -51,7 +50,8 @@ export async function POST(request: NextRequest) {
           template_id: body.templateId,
           suggestion: s.content,
           suggestion_type: s.type,
-          ai_score: s.score
+          ai_score: s.score,
+          workspace_id: workspace_id
         }))
 
         await supabase
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString()
           })
           .eq('id', body.templateId)
+          .eq('workspace_id', workspace_id)
       } catch (dbError) {
         console.error('Database error saving suggestions:', dbError)
         // Don't fail the request if DB save fails
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Count usage only on success
     try { 
-      await recordUserUsage({ userId: user.id, feature: 'ai_optimization', tokens: 1 }) 
+      await recordUsage(user.id, 'ai_optimization', 1) 
     } catch {}
 
     return NextResponse.json({ 

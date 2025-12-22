@@ -1,30 +1,31 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 export default function UpgradeNowPage() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
   const searchParams = useSearchParams();
   const planDefault = (searchParams.get("plan") === "annual") ? "annual" : "monthly";
   const [plan, setPlan] = useState<"monthly"|"annual">(planDefault);
 
-  useEffect(() => {
-    // Tiny check: hit your status endpoint
-    fetch("/api/subscription/status")
-      .then(r => r.json()).then(j => setAuthed(j?.status !== "free" ? true : false))
-      .catch(() => setAuthed(false));
-  }, []);
-
   async function goCheckout() {
     setLoading(true);
-    const endpoint = authed ? "/api/billing/checkout" : "/api/billing/public-checkout";
-    const body = authed ? { plan } : { email, plan };
-    const r = await fetch(endpoint, {
+    // Use env vars for price IDs
+    const priceId = plan === "annual" 
+      ? process.env.NEXT_PUBLIC_PRICE_PRO_ANNUAL_ID 
+      : process.env.NEXT_PUBLIC_PRICE_PRO_ID;
+    
+    if (!priceId) {
+      alert("Pricing not configured");
+      setLoading(false);
+      return;
+    }
+
+    const r = await fetch("/api/billing/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ priceId }),
     });
     const j = await r.json();
     if (j.url) window.location.href = j.url;
@@ -34,13 +35,11 @@ export default function UpgradeNowPage() {
     }
   }
 
-  const disabled = loading || (authed === false && !email);
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6">
       <h1 className="text-4xl font-bold mb-4">Upgrade to Pro</h1>
       <p className="text-gray-600 mb-8 text-center max-w-md">
-        Unlimited contacts, AI replies, and meeting automations.
+        Higher limits on contacts, AI replies, and meeting automations.
         Start your 7-day free trial, then $49/mo.
       </p>
 
@@ -70,24 +69,9 @@ export default function UpgradeNowPage() {
           : "Pay monthly. Cancel anytime."}
       </p>
 
-      {authed === false && (
-        <div className="w-full max-w-sm mb-4">
-          <input
-            type="email"
-            placeholder="email@company.com"
-            className="w-full border rounded px-3 py-2"
-            value={email}
-            onChange={e=>setEmail(e.target.value)}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            We'll send a magic link so you can log in after checkout.
-          </p>
-        </div>
-      )}
-
       <button
         onClick={goCheckout}
-        disabled={disabled}
+        disabled={loading}
         className="px-6 py-3 rounded bg-black text-white font-medium disabled:opacity-50"
       >
         {loading ? "Redirecting…" : (plan === "annual" ? "Start Annual Free Trial →" : "Start Free Trial →")}

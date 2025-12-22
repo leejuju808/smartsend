@@ -1,0 +1,15 @@
+name = "gmail-watch-setup"
+
+[functions."gmail-watch-setup"]
+verify_jwt = false
+
+
+
+
+
+
+
+
+
+
+

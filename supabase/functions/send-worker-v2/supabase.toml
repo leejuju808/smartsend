@@ -1,0 +1,9 @@
+[functions.send-worker-v2]
+verify_jwt = false
+schedule = "*/1 * * * *"
+
+
+
+
+
+

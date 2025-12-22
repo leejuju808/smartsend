@@ -2,7 +2,19 @@
 import { useEffect, useMemo, useState } from "react";
 import SequencePickerModal from "./SequencePickerModal";
 
-type Lead = { id:string; email:string; name?:string|null; company?:string|null; tz?:string|null; unsubscribed?:boolean; created_at:string };
+type Lead = { 
+  id:string; 
+  email:string; 
+  first_name?:string|null; 
+  last_name?:string|null; 
+  company?:string|null; 
+  tz?:string|null; 
+  unsubscribed?:boolean; 
+  created_at:string;
+  priority?:number;
+  engagement_score?:number;
+  intent_score?:number;
+};
 
 const COMMON_TZ = [
   "America/Los_Angeles","America/Denver","America/Chicago","America/New_York",
@@ -10,6 +22,15 @@ const COMMON_TZ = [
   "Asia/Singapore","Asia/Tokyo","Asia/Seoul","Asia/Kolkata",
   "Australia/Sydney"
 ];
+
+function Badge({ value }: { value: number }) {
+  const label = value >= 70 ? 'HOT' : value >= 40 ? 'WARM' : 'COLD';
+  return (
+    <span className={`px-2 py-1 rounded text-xs ${value >= 70 ? 'bg-red-600 text-white' : value >= 40 ? 'bg-yellow-500 text-black' : 'bg-gray-300 text-black'}`}>
+      {label} {value}
+    </span>
+  );
+}
 
 export default function LeadTable({ userId }: { userId: string }) {
   const [rows, setRows] = useState<Lead[]>([]);
@@ -89,6 +110,7 @@ export default function LeadTable({ userId }: { userId: string }) {
                 <th className="text-left p-3">Email</th>
                 <th className="text-left p-3">Name</th>
                 <th className="text-left p-3">Company</th>
+                <th className="text-left p-3">Priority</th>
                 <th className="text-left p-3">Timezone</th>
                 <th className="text-left p-3">Status</th>
                 <th className="text-right p-3">Added</th>
@@ -96,10 +118,10 @@ export default function LeadTable({ userId }: { userId: string }) {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={7} className="p-4 text-gray-500">Loading…</td></tr>
+                <tr><td colSpan={8} className="p-4 text-gray-500">Loading…</td></tr>
               )}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={7} className="p-4 text-gray-500">No leads. Import a CSV to get started.</td></tr>
+                <tr><td colSpan={8} className="p-4 text-gray-500">No leads. Import a CSV to get started.</td></tr>
               )}
               {!loading && rows.map(r => (
                 <tr key={r.id} className="border-t">
@@ -107,8 +129,22 @@ export default function LeadTable({ userId }: { userId: string }) {
                     <input type="checkbox" checked={!!sel[r.id]} onChange={e=>setSel({ ...sel, [r.id]: e.target.checked })} />
                   </td>
                   <td className="p-3 font-mono">{r.email}</td>
-                  <td className="p-3">{r.name || <span className="text-gray-400">—</span>}</td>
+                  <td className="p-3">
+                    {r.first_name ? `${r.first_name} ${r.last_name ?? ''}`.trim() : <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="p-3">{r.company || <span className="text-gray-400">—</span>}</td>
+                  <td className="p-3">
+                    {r.priority !== undefined ? (
+                      <>
+                        <Badge value={Math.round(r.priority)} />
+                        <div className="text-xs text-gray-500 mt-1">
+                          Eng {Math.round(r.engagement_score ?? 0)} • Intent {Math.round(r.intent_score ?? 0)}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-gray-400 text-xs">No score</span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <input

@@ -1,0 +1,114 @@
+# Artillery Load Testing Configuration for SmartSend v2
+# Tests API endpoints for performance and reliability
+
+config:
+  target: 'https://smartsendhq.com'
+  phases:
+    # Warm up phase
+    - duration: 60
+      arrivalRate: 2
+      name: "Warm up"
+    # Normal load phase
+    - duration: 300
+      arrivalRate: 5
+      name: "Normal load"
+    # Spike test phase
+    - duration: 120
+      arrivalRate: 20
+      name: "Spike load"
+  variables:
+    api_key: "{{ $processEnvironment.API_KEY }}"
+  plugins:
+    expect: {}
+  processor: "./processor.js"
+
+scenarios:
+  - name: "Analytics Dashboard"
+    flow:
+      - get:
+          url: "/api/dashboard/analytics"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: totals
+          capture:
+            - json: "$.totals.sent"
+              as: "analytics_sent"
+
+  - name: "Campaigns List"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/campaigns"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: campaigns
+
+  - name: "Dashboard Metrics"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/dashboard/metrics"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: totals
+
+  - name: "Inbox Threads"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/inbox/threads?workspaceId={{ workspace_id }}"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: threads
+
+  - name: "Channel Performance"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/analytics"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+  # Send queue test (lower weight)
+  - name: "Queue Message"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/whatsapp/send"
+          headers:
+            Authorization: "Bearer {{ api_key }}"
+            Content-Type: application/json
+          json:
+            lead_id: "{{ $randomString() }}"
+            body: "Test message from load test"
+          expect:
+            - statusCode: [200, 202]
+          capture:
+            - json: "$.id"
+              as: "queue_job_id"
+
+  - name: "Health Check"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/health"
+          expect:
+            - statusCode: 200
+          expect:
+            - maxResponseTime: 100
+

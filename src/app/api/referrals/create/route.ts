@@ -1,89 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/server/supabase";
+import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-export async function POST(request: NextRequest) {
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+/**
+ * POST /api/referrals/create
+ * Create a referral link for the authenticated user
+ */
+export async function POST(req: NextRequest) {
   try {
-    const { referralCode, email } = await request.json();
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!referralCode || !email) {
-      return NextResponse.json(
-        { error: "Missing referral code or email" },
-        { status: 400 }
-      );
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Find the referrer by referral code
-    const { data: referrer, error: referrerError } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("referral_code", referralCode)
+    // Generate unique referral code
+    const referralCode = `REF-${user.id.slice(0, 8).toUpperCase()}-${Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()}`;
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smartsend.ai";
+    const referralUrl = `${appUrl}/signup?ref=${referralCode}`;
+
+    // Check if user already has a referral code (from affiliates table or create new)
+    const { data: existingAffiliate } = await supabaseAdmin
+      .from("affiliates")
+      .select("id, referral_code")
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (referrerError || !referrer) {
-      return NextResponse.json(
-        { error: "Invalid referral code" },
-        { status: 400 }
-      );
-    }
-
-    // Find the referee by email (they should have just signed up)
-    const { data: referee, error: refereeError } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (refereeError || !referee) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-
-    // Check if referral already exists
-    const { data: existingReferral } = await supabaseAdmin
-      .from("referrals")
-      .select("id")
-      .eq("inviter", referrer.id)
-      .eq("invitee", referee.id)
-      .maybeSingle();
-
-    if (existingReferral) {
-      return NextResponse.json(
-        { error: "Referral already exists" },
-        { status: 409 }
-      );
-    }
-
-    // Create the referral
-    const { error: insertError } = await supabaseAdmin
-      .from("referrals")
-      .insert({
-        inviter: referrer.id,
-        invitee: referee.id,
-        email: email,
-        status: "joined"
+    let finalReferralCode = referralCode;
+    if (existingAffiliate) {
+      finalReferralCode = existingAffiliate.referral_code;
+    } else {
+      // Create affiliate record if doesn't exist
+      await supabaseAdmin.from("affiliates").insert({
+        user_id: user.id,
+        referral_code: finalReferralCode,
+        referral_url: referralUrl,
       });
-
-    if (insertError) {
-      console.error("Error creating referral:", insertError);
-      return NextResponse.json(
-        { error: "Failed to create referral" },
-        { status: 500 }
-      );
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: "Referral created successfully"
+      referral_code: finalReferralCode,
+      referral_url: referralUrl,
     });
-
-  } catch (error) {
-    console.error("Error creating referral:", error);
+  } catch (error: any) {
+    console.error("Referral creation error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }
 }
-

@@ -43,7 +43,7 @@ export default function Freewall({ kind = 'demo', children, className }: Props) 
   const variant = pickVariant('upgrade_copy_v1')
   const copy = variant === 'A'
     ? { title: 'You’ve hit today’s free limit', sub: (u:number,q:number)=>`You used ${u}/${q} today. Upgrade to keep going instantly.` }
-    : { title: 'Out of free uses for today', sub: (u:number,q:number)=>`You’ve reached ${u}/${q}. Unlock unlimited usage with Pro.` }
+    : { title: 'Out of free uses for today', sub: (u:number,q:number)=>`You’ve reached ${u}/${q}. Unlock higher limits with Pro.` }
   return (
     <div className={className}>
       <div className="rounded-2xl border p-6 bg-white space-y-3">

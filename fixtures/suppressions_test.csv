@@ -1,0 +1,5 @@
+email,reason,source
+spam@foo.com,complaint,import
+bounce@example.com,bounced,import
+spam@foo.com,complaint,import
+test@example.com,manual,import 

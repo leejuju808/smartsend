@@ -5,14 +5,35 @@ import ReferralCard from "@/components/ReferralCard";
 import HubspotCard from "@/components/HubspotCard";
 import SlackCard from "@/components/SlackCard";
 import DomainNudge from "@/components/DomainNudge";
+import EmailConnect from "@/app/settings/EmailConnect";
+import { SendingAccounts } from "@/components/SendingAccounts";
+import { OptOutGuard } from "@/components/settings/OptOutGuard";
+import { ComplianceGuard } from "@/components/settings/ComplianceGuard";
+import { OooDeferral } from "@/components/settings/OooDeferral";
+import { createClientComponentClient } from "@/lib/supabase";
 
 export default function SettingsPage() {
+  const supabase = createClientComponentClient();
   const [on, setOn] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connected, setConnected] = useState<null | { email: string }>(null);
 
   useEffect(() => {
     fetch("/api/settings/learn-status").then(r=>r.json()).then(j=>setOn(!!j.enabled)).catch(()=>{});
-  }, []);
+    
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check gmail_connections table (single-tenant MVP uses OWNER_USER_ID)
+      // For MVP, we fetch using service role via API since user might not be OWNER_USER_ID
+      const connRes = await fetch("/api/auth/gmail/status");
+      if (connRes.ok) {
+        const connData = await connRes.json();
+        if (connData?.email_address) setConnected({ email: connData.email_address });
+      }
+    })();
+  }, [supabase]);
 
   async function save(v: boolean) {
     setSaving(true);
@@ -22,6 +43,31 @@ export default function SettingsPage() {
     });
     setOn(v); setSaving(false);
   }
+
+  // Check URL params for connection status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmailConnected = params.get("gmail_connected");
+    const gmailError = params.get("gmail_error");
+    
+    if (gmailConnected === "1") {
+      // Refresh connection status
+      (async () => {
+        const connRes = await fetch("/api/auth/gmail/status");
+        if (connRes.ok) {
+          const connData = await connRes.json();
+          if (connData?.email_address) setConnected({ email: connData.email_address });
+        }
+      })();
+      // Clean URL
+      window.history.replaceState({}, "", "/dashboard/settings");
+    }
+    
+    if (gmailError) {
+      alert(`Gmail connection error: ${decodeURIComponent(gmailError)}`);
+      window.history.replaceState({}, "", "/dashboard/settings");
+    }
+  }, []);
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
@@ -66,6 +112,46 @@ export default function SettingsPage() {
       </div>
       
       <ExtensionHealthCard />
+      
+      <div className="rounded-2xl border border-neutral-800 p-5 bg-neutral-900">
+        <h2 className="text-lg font-semibold mb-2">Gmail Connection</h2>
+        {connected ? (
+          <div className="flex items-center justify-between">
+            <p className="text-sm opacity-80">
+              Connected as <span className="font-medium">{connected.email}</span>
+            </p>
+            <a
+              href="/api/auth/gmail/start"
+              className="px-3 py-1.5 rounded-lg border border-neutral-700 hover:bg-white/5"
+            >
+              Re-connect
+            </a>
+          </div>
+        ) : (
+          <a
+            href="/api/auth/gmail/start"
+            className="inline-block px-4 py-2 rounded-xl bg-amber-400 text-black font-semibold hover:bg-amber-300 transition-colors"
+          >
+            Connect Gmail
+          </a>
+        )}
+      </div>
+      
+      <div className="border rounded p-4 space-y-2">
+        <h2 className="text-lg font-medium">Email Accounts</h2>
+        <EmailConnect />
+      </div>
+      
+      <div className="border rounded p-4 space-y-2">
+        <h2 className="text-lg font-medium">Sending Accounts</h2>
+        <SendingAccounts />
+      </div>
+      
+      <ComplianceGuard />
+
+      <OptOutGuard />
+      
+      <OooDeferral />
       
       <HubspotCard />
       

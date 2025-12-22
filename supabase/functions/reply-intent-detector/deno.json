@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  },
+  "imports": {
+    "openai": "npm:openai@^4.0.0",
+    "ical-generator": "npm:ical-generator@^3.0.0"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "types": ["npm:@types/node"]
+  }
+}

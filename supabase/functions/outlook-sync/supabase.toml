@@ -1,0 +1,12 @@
+[functions.outlook-sync]
+verify_jwt = false
+
+[functions.outlook-sync.environment]
+CRON_SECRET = "set-a-random-string"
+
+[[cron.jobs]]
+schedule = "*/3 * * * *"
+endpoint = "/outlook-sync?key=set-a-random-string"
+
+
+

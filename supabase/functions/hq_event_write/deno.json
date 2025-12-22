@@ -1,0 +1,11 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  },
+  "imports": {},
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "types": ["npm:@types/node"]
+  }
+}
+

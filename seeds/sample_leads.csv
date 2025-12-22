@@ -1,0 +1,9 @@
+email,first_name,last_name,company
+alice@example.com,Alice,Stone,Stone Co
+bob+dup@example.com,Bob,West,Westworks
+bad-email,Bad,Email,Broken Inc
+carl@example.com,Carl,Nguyen,Orbit LLC
+bob+dup@example.com,Bob,West,Westworks
+diana@example,Dia,Na,NotACompany
+emma@example.com,Emma,Lee,Lee Group
+

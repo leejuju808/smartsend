@@ -1,50 +1,49 @@
-"use client"
-import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@/lib/supabase'
+"use client";
+import { useEffect, useState } from "react";
 
-export default function TeamSwitcher() {
-  const supabase = createClientComponentClient()
-  const [teams, setTeams] = useState<any[]>([])
-  const [active, setActive] = useState<any>(null)
+interface TeamSwitcherProps {
+  onChange?: (id: string) => void;
+}
+
+export default function TeamSwitcher({ onChange }: TeamSwitcherProps) {
+  const [teams, setTeams] = useState<any[]>([]);
+  const [active, setActive] = useState<string>("");
 
   useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data } = await supabase
-        .from('team_members')
-        .select('team_id, teams(*)')
-        .eq('user_id', user.id)
-      const list = (data || []).map((m: any) => (m as any).teams)
-      setTeams(list)
-      const saved = typeof window !== 'undefined' ? localStorage.getItem('active_team') : null
-      const initial = list.find((t: any) => (t as any).id === saved) || list[0] || null
-      setActive(initial)
-      if (initial) localStorage.setItem('active_team', (initial as any).id)
-    }
-    load()
-  }, [supabase])
+    (async () => {
+      try {
+        const r = await fetch("/api/teams/list");
+        const j = await r.json();
+        setTeams(j.items ?? []);
+        const saved = localStorage.getItem("activeTeamId") || j.items?.[0]?.id;
+        if (saved) {
+          setActive(saved);
+          onChange?.(saved);
+        }
+      } catch (error) {
+        console.error("Error loading teams:", error);
+      }
+    })();
+  }, [onChange]);
+
+  const handleChange = (teamId: string) => {
+    setActive(teamId);
+    localStorage.setItem("activeTeamId", teamId);
+    onChange?.(teamId);
+  };
 
   return (
-    <div className="mb-4">
-      <label className="block text-xs text-gray-500 mb-1">Context</label>
-      <select
-        className="w-full border rounded-lg p-2 text-sm"
-        value={active?.id || ''}
-        onChange={(e) => {
-          const t = teams.find((w) => (w as any).id === e.target.value)
-          setActive(t)
-          if (t) localStorage.setItem('active_team', (t as any).id)
-        }}
-      >
-        <option value="">Personal</option>
-        {teams.map((w: any) => (
-          <option key={(w as any).id} value={(w as any).id}>
-            Team: {(w as any).name}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
+    <select
+      value={active}
+      onChange={(e) => handleChange(e.target.value)}
+      className="bg-transparent border border-zinc-700 rounded-xl px-2 py-1"
+    >
+      {teams.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name}
+        </option>
+      ))}
+    </select>
+  );
 }
 

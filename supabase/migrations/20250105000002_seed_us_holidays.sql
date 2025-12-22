@@ -1,0 +1,18 @@
+-- Optional: Seed common US holidays for 2025
+
+insert into public.holidays(country_code, holiday_date, name) values
+('US','2025-01-01','New Year''s Day'),
+('US','2025-01-20','Martin Luther King Jr. Day'),
+('US','2025-02-17','Washington''s Birthday'),
+('US','2025-05-26','Memorial Day'),
+('US','2025-06-19','Juneteenth'),
+('US','2025-07-04','Independence Day'),
+('US','2025-09-01','Labor Day'),
+('US','2025-10-13','Columbus Day'),
+('US','2025-11-11','Veterans Day'),
+('US','2025-11-27','Thanksgiving Day'),
+('US','2025-12-25','Christmas Day')
+on conflict (country_code, holiday_date) do nothing;
+
+
+

@@ -1,0 +1,50 @@
+[
+  {
+    "slug": "feature-launch-pro",
+    "title": "Feature Launch Pro",
+    "amount_cents": 1900,
+    "currency": "usd",
+    "interval": "one_time",
+    "description": "Professional feature announcement sequence with social proof and clear CTAs"
+  },
+  {
+    "slug": "churn-winback",
+    "title": "Churn Winback Master",
+    "amount_cents": 2900,
+    "currency": "usd", 
+    "interval": "one_time",
+    "description": "Proven sequence to reactivate churned customers with personalized offers"
+  },
+  {
+    "slug": "pricing-nudge",
+    "title": "Pricing Nudge Pro",
+    "amount_cents": 1500,
+    "currency": "usd",
+    "interval": "one_time", 
+    "description": "Strategic price increase communication that minimizes churn"
+  },
+  {
+    "slug": "demo-followup",
+    "title": "Demo Follow-up Elite",
+    "amount_cents": 1200,
+    "currency": "usd",
+    "interval": "one_time",
+    "description": "High-converting post-demo sequence with objection handling"
+  },
+  {
+    "slug": "trial-expiry",
+    "title": "Trial Expiry Converter",
+    "amount_cents": 900,
+    "currency": "usd",
+    "interval": "one_time",
+    "description": "Optimized trial-to-paid conversion sequence"
+  },
+  {
+    "slug": "referral-ask",
+    "title": "Referral Ask Pro",
+    "amount_cents": 1100,
+    "currency": "usd",
+    "interval": "one_time",
+    "description": "Strategic referral request sequence with incentives"
+  }
+] 

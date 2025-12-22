@@ -1,7 +1,8 @@
+import { Buffer } from "node:buffer";
 import { supabaseAdmin } from "@/server/supabase";
 import { renderTemplate } from "@/lib/templating";
-import { ensureOutboundRecord, makeMessageId, trackingPixelTag } from "@/server/tracking";
-import { unsubscribeLink } from "@/server/unsub";
+import { getLeadContext } from "@/lib/renderContext";
+import { ensureOutboundRecord, makeMessageId } from "@/server/tracking";
 import { isSuppressed, addSuppression, classifySendError } from "@/server/suppression";
 
 type Lead = { id: string; email: string; name?: string; company?: string };
@@ -85,23 +86,31 @@ export async function sendStepEmail(params: {
     };
   })(ownerId);
 
+  // Get full lead context for templating
+  const leadContext = await getLeadContext(lead.id);
+
   const renderedSubject = renderTemplate(subject, {
     ...ctxBase,
-    lead: { email: lead.email, name: lead.name, company: lead.company },
-  }, { html: false });
+    ...leadContext,
+  });
 
   bodyHtml = renderTemplate(bodyHtml, {
     ...ctxBase,
-    lead: { email: lead.email, name: lead.name, company: lead.company },
-  }, { html: true });
+    ...leadContext,
+  });
 
   // Unsubscribe link injection (token must be present)
   if (!/%UNSUB%/i.test(bodyHtml)) throw new Error("Compliance: missing %UNSUB% token");
-  const unsub = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/u?k=${encodeURIComponent(trackingKey)}`;
+  const unsubBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://app.smartsendhq.com";
+  const unsub = `${unsubBaseUrl}/api/unsub?e=${encodeURIComponent(Buffer.from(lead.email.toLowerCase(), "utf8").toString("base64"))}&t=${encodeURIComponent(trackingKey)}`;
   bodyHtml = bodyHtml.replace(
     /%UNSUB%/gi,
     `<p style="font-size:12px;color:#6b7280"><a href="${unsub}">Unsubscribe</a></p>`
   );
+
+  if (!/To stop emails from us, click here/i.test(bodyHtml)) {
+    bodyHtml += `<p style="font-size:12px;color:#6b7280;margin-top:16px;">&mdash;<br/>To stop emails from us, click here: <a href="${unsub}">${unsub}</a></p>`;
+  }
 
   // Add open pixel (v2)
   bodyHtml += `<img src="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/o?k=${encodeURIComponent(trackingKey)}" width="1" height="1" style="display:none" alt="" />`;
@@ -116,6 +125,7 @@ export async function sendStepEmail(params: {
   const messageId = makeMessageId();
 
   // Send via provided transport with bounce classification
+  const unsubscribeMailto = `mailto:unsubscribe@smartsendhq.com?subject=${encodeURIComponent(outboundId)}`;
   try {
     await params.transportSend({
       to: lead.email,
@@ -125,7 +135,7 @@ export async function sendStepEmail(params: {
         "Message-ID": messageId,
         "In-Reply-To": messageId,
         "References": messageId,
-        "List-Unsubscribe": `<${unsub}>`,
+        "List-Unsubscribe": `<${unsubscribeMailto}>, <${unsub}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     });

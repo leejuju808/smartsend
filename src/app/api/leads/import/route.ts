@@ -1,103 +1,102 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/server/supabase";
-import { isIana, guessTzFromEmail } from "@/lib/tz";
+import { NextRequest, NextResponse } from 'next/server'
+import { parse } from 'csv-parse/sync'
+import { createServerClient } from '@/lib/supabase/service'
 
-type LeadRow = {
-  email: string;
-  name?: string;
-  company?: string;
-  custom1?: string;
-  custom2?: string;
-  custom3?: string;
-  timezone?: string; // NEW
-};
+type MapKeys = 'email'|'first_name'|'last_name'|'company'|'title'|'phone'|'website'|'linkedin'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+export const dynamic = 'force-dynamic'
 
-export async function POST(req: Request) {
-  const { userId, rows } = await req.json().catch(() => ({}));
-  if (!userId || !Array.isArray(rows)) {
-    return NextResponse.json({ error: "Missing userId or rows" }, { status: 400 });
-  }
+export async function POST(req: NextRequest) {
+  try {
+    const form = await req.formData()
+    const file = form.get('file') as File
+    const teamId = form.get('teamId') as string
+    const mapping = JSON.parse(String(form.get('mapping') || '{}')) as Record<string, MapKeys|`custom.${string}`>
 
-  // Resolve owner email for leads table
-  const { data: profile, error: profileErr } = await supabaseAdmin
-    .from("users")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profileErr) return NextResponse.json({ error: String(profileErr) }, { status: 500 });
-  const ownerEmail = (profile as any)?.email as string | undefined;
-  if (!ownerEmail) return NextResponse.json({ error: "Missing owner email" }, { status: 400 });
-
-  // Hard guardrails
-  if (rows.length > 5000) {
-    return NextResponse.json({ error: "Max 5000 rows per import" }, { status: 400 });
-  }
-
-  let imported = 0;
-  let skipped = 0;
-  let invalid = 0;
-
-  // Normalize + validate
-  const toUpsert: (LeadRow & { owner_email: string; tz?: string | null })[] = [];
-  const seen = new Set<string>(); // dedupe within file (email lowercased)
-  for (const r of rows as LeadRow[]) {
-    const email = String(r?.email || "").trim().toLowerCase();
-    if (!email || !EMAIL_RE.test(email)) {
-      invalid++;
-      continue;
-    }
-    if (seen.has(email)) {
-      skipped++;
-      continue;
-    }
-    seen.add(email);
-    const tzRaw = (r as any)?.timezone ? String((r as any).timezone).trim() : "";
-    let tz: string | null = null;
-    if (tzRaw && isIana(tzRaw)) tz = tzRaw;
-    if (!tz) {
-      const g = guessTzFromEmail(email);
-      if (g && isIana(g)) tz = g;
+    if (!file || !teamId) {
+      return NextResponse.json({ error: 'Missing file or teamId' }, { status: 400 })
     }
 
-    toUpsert.push({
-      owner_email: ownerEmail,
-      email,
-      name: r?.name?.slice(0, 120) || (null as any),
-      company: r?.company?.slice(0, 120) || (null as any),
-      custom1: r?.custom1?.slice?.(0, 255) || (null as any),
-      custom2: r?.custom2?.slice?.(0, 255) || (null as any),
-      custom3: r?.custom3?.slice?.(0, 255) || (null as any),
-      tz: tz || (null as any), // NEW
-    });
+    const supabase = createServerClient()
+
+    const text = await file.text()
+    const rows: any[] = parse(text, { columns: true, skip_empty_lines: true, trim: true })
+
+    // Known fields that map to lead columns
+    const known = ["email", "first_name", "last_name", "full_name", "company", "title", "website", "city", "state", "country", "domain", "phone", "linkedin"];
+    
+    // Transform rows using mapping
+    const toInsert = rows.map((r) => {
+      const base: any = { team_id: teamId, custom_fields: {} as Record<string, any> }
+      const mappedCols = new Set(Object.keys(mapping));
+      
+      // Process mapped columns
+      for (const [csvCol, field] of Object.entries(mapping)) {
+        const val = r[csvCol] ?? null
+        if (!field) continue
+        if (field.startsWith('custom.')) {
+          // Block 8600: Store custom fields in custom_fields JSONB column
+          const customKey = field.split('.').slice(1).join('.')
+          base.custom_fields[customKey] = val
+        } else if (known.includes(field)) {
+          base[field] = val
+        } else {
+          // Unknown field goes to custom_fields
+          base.custom_fields[field] = val
+        }
+      }
+      
+      // Put unmapped columns into custom_fields
+      for (const [csvCol, val] of Object.entries(r)) {
+        if (!mappedCols.has(csvCol) && val != null && val !== '') {
+          base.custom_fields[csvCol] = val
+        }
+      }
+      
+      return base
+    }).filter(x => x.email) // require email
+
+    if (toInsert.length === 0) {
+      return NextResponse.json({ error: 'No valid rows with email found' }, { status: 400 })
+    }
+
+    // Check limits before importing
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const checkLimitsRes = await fetch(`${supabaseUrl}/functions/v1/checkLimits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ teamId, type: 'lead' }),
+    })
+
+    const checkLimits = await checkLimitsRes.json()
+    if (!checkLimits.allowed) {
+      return NextResponse.json({ 
+        error: 'Lead limit reached. Upgrade to add more leads.',
+        upgradeRequired: true 
+      }, { status: 403 })
+    }
+
+    // Use RPC function for bulk upsert with proper conflict handling on unique index
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('upsert_leads_bulk', {
+      p_team_id: teamId,
+      p_leads: toInsert
+    })
+
+    if (rpcError) {
+      return NextResponse.json({ 
+        error: rpcError.message || 'Import failed',
+        details: rpcError 
+      }, { status: 400 })
+    }
+
+    const imported = rpcResult?.imported || 0
+    return NextResponse.json({ imported })
+  } catch (e: any) {
+    return NextResponse.json({ 
+      error: `Import error: ${e?.message || e}` 
+    }, { status: 500 })
   }
-
-  if (toUpsert.length === 0) {
-    return NextResponse.json({ imported: 0, skipped, invalid, total: rows.length });
-  }
-
-  const { error } = await supabaseAdmin
-    .from("leads")
-    .upsert(toUpsert, { onConflict: "owner_email,email", ignoreDuplicates: true });
-
-  if (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
-  }
-
-  // Determine how many unique rows persisted
-  const emails = toUpsert.map((r) => r.email);
-  const { data: dupCheck } = await supabaseAdmin
-    .from("leads")
-    .select("email")
-    .eq("owner_email", ownerEmail)
-    .in("email", emails);
-
-  const uniquePersisted = dupCheck?.length ?? 0;
-  imported = uniquePersisted;
-  const duplicates = toUpsert.length - uniquePersisted;
-  skipped += Math.max(0, duplicates);
-
-  return NextResponse.json({ imported, skipped, invalid, total: rows.length });
 }
-

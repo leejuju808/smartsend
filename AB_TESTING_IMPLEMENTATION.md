@@ -1,185 +1,172 @@
-# A/B Testing Implementation
-
-This document describes the A/B testing system implemented for the upgrade banner to optimize conversion rates.
+# A/B Testing Implementation Summary
 
 ## Overview
+This implementation adds A/B testing capabilities to SmartSend AI email campaigns, allowing users to generate multiple email variants and automatically split sends across variants based on weights. The system tracks variant performance and provides metrics for optimization.
 
-The system allows you to run controlled experiments with different variants of UI elements (like the upgrade banner) and measure their performance through conversion tracking.
+## Files Created
 
-## Database Schema
+### 1. SQL Migration
+**File**: `supabase/migrations/20250200_template_variants_ab_testing.sql`
 
-### Tables Created
+Creates:
+- `campaign_templates` table - Base templates per campaign
+- `template_variants` table - AI-generated variants with weights
+- Adds `template_variant_id` column to `email_logs` for analytics
+- `variant_metrics` view - Aggregated metrics per variant (sent, opens, clicks, replies, rates)
+- `variant_winners` view - Identifies winning variants after minimum volume (50 sends)
+- RLS policies for all tables
 
-1. **`experiments`** - Stores experiment configuration
-   - `id`: Unique identifier
-   - `name`: Experiment name (e.g., "upgrade_banner")
-   - `variants`: JSON array of variants with weights
-   - `created_at`: Timestamp
+### 2. Helper Library
+**File**: `lib/templates/merge.ts`
 
-2. **`experiment_assignments`** - Tracks which users see which variants
-   - `user_id`: User identifier
-   - `experiment_id`: Experiment reference
-   - `variant`: Assigned variant (A, B, etc.)
-   - `assigned_at`: Assignment timestamp
+Functions:
+- `applyMergeTags(html, merge)` - Replaces `{{key}}` tags with values from merge object
+- `withFooterUnsub(bodyHtml, userId, recipientEmail, campaignId)` - Adds unsubscribe footer with signed token
 
-3. **`experiment_events`** - Logs user interactions
-   - `user_id`: User identifier
-   - `experiment_id`: Experiment reference
-   - `variant`: Variant shown to user
-   - `event`: Event type (viewed_banner, clicked_cta, converted)
-   - `created_at`: Event timestamp
+### 3. API Route for Variant Generation
+**File**: `src/app/api/templates/rewrite/route.ts`
 
-## Setup Instructions
+Endpoint: `POST /api/templates/rewrite`
 
-### 1. Database Setup
+Features:
+- Generates 1-5 variants using OpenAI GPT-4o-mini
+- Falls back to heuristic-based generation if OpenAI unavailable
+- Automatically creates base template if it doesn't exist
+- Configurable tone, CTA style, and length
+- Saves variants with equal default weights
 
-Run the SQL commands in `database-setup.sql` in your Supabase SQL editor:
+Parameters:
+- `campaignId` - Campaign identifier
+- `baseSubject` - Original subject line
+- `baseHtml` - Original HTML body
+- `qty` - Number of variants to generate (1-5)
+- `tone` - friendly | curious | direct | case-study
+- `ctaStyle` - book-call | reply-yes | visit-link
+- `length` - short | medium | long
 
-```sql
--- A/B Testing Tables
-create table if not exists public.experiments (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  variants jsonb not null,
-  created_at timestamptz default now()
-);
+### 4. Updated Enqueue Route
+**File**: `src/app/api/campaigns/queue/route.ts`
 
--- ... (rest of the tables and indexes)
-```
+Changes:
+- Queries for template variants when enqueueing
+- Builds weighted round-robin wheel for variant selection
+- Applies merge tags to each variant ({{first_name}}, {{company}}, {{cta_url}}, etc.)
+- Adds unsubscribe footer to each email
+- Stores rendered content in `send_queue` with `template_variant_id`
+- Returns variant count in response
 
-### 2. Insert Experiment
+### 5. UI Page for Variant Generation
+**File**: `src/app/campaigns/[id]/templates/page.tsx`
 
-Insert the upgrade_banner experiment:
-
-```sql
-insert into public.experiments (name, variants) values
-('upgrade_banner', '[{"key":"A","weight":0.5},{"key":"B","weight":0.5}]');
-```
-
-Or use the admin interface at `/admin/experiments`
-
-### 3. API Endpoints
-
-- **GET** `/api/experiments/[name]` - Get or assign variant
-- **POST** `/api/experiments/event` - Log experiment events
-- **POST** `/api/experiments/admin/insert` - Create new experiments (admin only)
+Features:
+- Form to enter base subject and HTML
+- Generate button to create variants
+- Configurable quantity (1-5 variants)
+- Help text explaining merge tag usage
+- Toast notifications for success/errors
 
 ## How It Works
 
-### 1. Variant Assignment
+### 1. Creating Variants
+1. Navigate to `/campaigns/[id]/templates`
+2. Enter base subject and HTML body
+3. Optionally configure merge tags like `{{first_name}}`, `{{company}}`, `{{cta_url}}`
+4. Click "Generate Variants"
+5. System creates variants using AI or heuristics
 
-When a user visits a page with the upgrade banner:
-1. Frontend calls `/api/experiments/upgrade_banner`
-2. API checks if user already has an assignment
-3. If not, assigns a weighted random variant
-4. Returns the variant and experiment ID
+### 2. Enqueueing with A/B Split
+1. When enqueueing contacts, system automatically:
+   - Queries available variants for the campaign
+   - Builds a weighted round-robin wheel (variant weights determine distribution)
+   - Selects a variant for each contact
+   - Applies merge tags to personalize content
+   - Adds unsubscribe footer
+   - Stores rendered subject, body_html, and template_variant_id in send_queue
 
-### 2. Event Tracking
+### 3. Tracking Performance
+Metrics are automatically calculated via the `variant_metrics` view:
+- Total sent
+- Opens, clicks, replies
+- Open rate, click rate, reply rate
+- Weight distribution
 
-The system tracks three key events:
-- **`viewed_banner`** - User saw the banner
-- **`clicked_cta`** - User clicked the CTA button
-- **`converted`** - User upgraded to Pro (automatically tracked)
+### 4. Finding Winners (Optional)
+The `variant_winners` view automatically identifies top-performing variants:
+- Minimum 50 sends required
+- Sorted by reply rate, then sent count
+- Can be used by admin tasks to promote winners (e.g., increase weight to 70%)
 
-### 3. Conversion Attribution
+## Merge Tags
 
-When a user upgrades to Pro:
-1. Stripe webhook triggers
-2. `updateSubscriptionStatus` function runs
-3. System checks for active experiment assignments
-4. Logs "converted" events for all active experiments
+Available tags that are automatically replaced:
+- `{{first_name}}` - Contact's first name
+- `{{company}}` - Contact's company
+- `{{cta_url}}` - CTA link (if provided)
+- Any custom fields from the contact
 
-## Variant Details
+Unused tags are safely removed from the final HTML.
 
-### Variant A (50% traffic)
-- **Headline**: "🚀 Upgrade to Pro"
-- **Subtext**: "Unlock full automation today."
-- **CTA**: "Upgrade Now"
+## Database Schema
 
-### Variant B (50% traffic)
-- **Headline**: "💡 Don't leave meetings on the table"
-- **Subtext**: "Pro users 2× their booked calls."
-- **CTA**: "Start Pro →"
-
-## Analytics & Reporting
-
-### Weekly Report
-
-Use the analytics functions to generate reports:
-
-```typescript
-import { getWeeklyExperimentReport } from "@/lib/experiments/analytics";
-
-const report = await getWeeklyExperimentReport();
-console.log(report);
+### campaign_templates
+```sql
+- id (uuid)
+- campaign_id (uuid) → campaigns
+- user_id (uuid) → auth.users
+- name (text, default: 'Default')
+- subject (text)
+- body_html (text)
+- is_active (boolean, default: true)
+- created_at (timestamptz)
 ```
 
-### Key Metrics
-
-- **Click-Through Rate (CTR)**: Clicks / Views
-- **Conversion Rate**: Conversions / Views
-- **Statistical Significance**: Compare variants to determine winner
-
-## Frontend Integration
-
-The `UpgradeBanner` component automatically:
-1. Fetches variant assignment
-2. Displays appropriate copy
-3. Tracks view events
-4. Tracks click events
-5. Redirects to billing page
-
-## Admin Interface
-
-Visit `/admin/experiments` to:
-- Create new experiments
-- View experiment details
-- Monitor performance
-
-## Best Practices
-
-1. **Traffic Allocation**: Start with 50/50 splits for statistical significance
-2. **Duration**: Run experiments for at least 1-2 weeks
-3. **Sample Size**: Ensure sufficient traffic for reliable results
-4. **Monitoring**: Check conversion rates regularly
-5. **Iteration**: Use results to inform future experiments
-
-## Troubleshooting
-
-### Common Issues
-
-1. **No variants showing**: Check experiment exists in database
-2. **Events not logging**: Verify API endpoints are accessible
-3. **Conversion tracking**: Ensure Stripe webhook is configured
-
-### Debug Queries
-
+### template_variants
 ```sql
--- Check experiment configuration
-select * from experiments where name = 'upgrade_banner';
+- id (uuid)
+- campaign_template_id (uuid) → campaign_templates
+- user_id (uuid) → auth.users
+- label (text, e.g. "V1: Curious hook")
+- subject (text)
+- body_html (text)
+- weight (int, default: 50)
+- created_at (timestamptz)
+```
 
--- View user assignments
-select * from experiment_assignments where experiment_id = 'your-exp-id';
+### email_logs (updated)
+- Added: `template_variant_id (uuid)` → template_variants
 
--- Check event counts
-select variant, event, count(*) 
-from experiment_events 
-where experiment_id = 'your-exp-id' 
-group by variant, event;
+### send_queue (updated)
+- Added: `template_variant_id (uuid)` → template_variants
+
+## Security
+
+- All tables have RLS enabled
+- Users can only access their own templates/variants
+- HMAC-signed unsubscribe tokens for security
+- No sensitive data exposed in variant generation
+
+## Usage Example
+
+```typescript
+// Generate variants
+POST /api/templates/rewrite
+{
+  "campaignId": "123",
+  "baseSubject": "Quick idea for {{company}}",
+  "baseHtml": "Hi {{first_name}}, saw {{company}} and thought...",
+  "qty": 3,
+  "tone": "curious",
+  "ctaStyle": "reply-yes",
+  "length": "short"
+}
+
+// Result: Creates 3 variants with equal weights (33% each)
 ```
 
 ## Future Enhancements
 
-- Multi-variant testing (A/B/C/D)
-- Dynamic traffic allocation
-- Statistical significance testing
-- Automated winner selection
-- Integration with analytics platforms
-- Email/Slack reporting automation
-
-## Security
-
-- RLS policies protect user data
-- Admin endpoints require @smartsend.ai email
-- Experiment data is read-only for regular users
-- No sensitive user information exposed 
+1. **Auto-promote winners**: Cron job to increase winner weight after N sends
+2. **Statistical significance**: Highlight when results are statistically meaningful
+3. **Weight editor**: UI to manually adjust variant weights
+4. **Preview variants**: Show rendered examples before enqueueing
+5. **Multi-variant tests**: Support testing subject AND body simultaneously

@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { removeMember } from '@/app/actions/team'
 import InviteMemberForm from '@/components/InviteMemberForm'
 import AddSeatButton from '@/components/team/AddSeatButton'
+import { CityAccessIndicator } from '@/components/CityAccessIndicator'
 
 export default async function AccountPage() {
   const { user, status } = await getUserSubscriptionStatus()
@@ -34,6 +35,9 @@ export default async function AccountPage() {
 
   return (
     <div className="max-w-2xl mx-auto py-10 space-y-6">
+      {/* City Access (soft scarcity) */}
+      {/* @ts-expect-error Client component */}
+      <CityAccessIndicator />
       <div className="rounded-2xl border p-6 bg-white space-y-2">
         <div className="text-sm text-slate-500">Subscription status</div>
         <div className="text-lg font-semibold flex items-center gap-2">
@@ -43,7 +47,7 @@ export default async function AccountPage() {
         </div>
         {!isPro(status) && (
           <div className="text-sm text-slate-500">
-            Upgrade on the <Link href="/dashboard/billing" className="text-blue-600 underline">Billing</Link> page for unlimited usage.
+            Upgrade on the <Link href="/dashboard/billing" className="text-blue-600 underline">Billing</Link> page for higher limits.
           </div>
         )}
       </div>

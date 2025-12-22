@@ -144,6 +144,15 @@ export default function ReferralCard() {
           <li>You earn 100 AI reply credits when they upgrade</li>
         </ol>
       </div>
+
+      <div className="border-t border-blue-200 pt-3 mt-2">
+        <a
+          href="/dashboard/partners"
+          className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700"
+        >
+          View Partner Dashboard →
+        </a>
+      </div>
     </div>
   );
 } 

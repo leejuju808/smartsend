@@ -422,6 +422,7 @@ export async function submitCancelFeedbackThenPortal(formData: FormData) {
 
 /** Apply one referral credit month by attaching a 100% off, one-cycle coupon to the active subscription and decrementing credits. */
 export async function applyReferralCredit() {
+  const { log } = await import('@/lib/logger')
   const jar = await getCookies()
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: { get: (n: string) => jar.get(n)?.value, set(){}, remove(){} },
@@ -449,26 +450,48 @@ export async function applyReferralCredit() {
     couponId = coupon.id
   }
 
-  await stripe.subscriptions.update(sub.id, {
-    discounts: [{ coupon: couponId! }],
-    proration_behavior: 'none',
-    payment_behavior: 'allow_incomplete',
-  })
-  // Decrement one credit month, prefer bonus_credit then legacy credit_months
-  const { data: cur } = await admin().from('profiles').select('bonus_credit, credit_months').eq('id', user.id).maybeSingle()
-  const curBonus = Number((cur as any)?.bonus_credit || 0)
-  const curLegacy = Number((cur as any)?.credit_months || 0)
-  if (curBonus > 0) {
-    await admin().from('profiles').update({ bonus_credit: Math.max(0, curBonus - 1) }).eq('id', user.id)
-  } else if (curLegacy > 0) {
-    try {
-      await admin().rpc('add_credit_month', { p_user_id: user.id, p_delta: -1 })
-    } catch {
-      const newBal = Math.max(0, curLegacy - 1)
-      await admin().from('profiles').update({ credit_months: newBal }).eq('id', user.id)
+  try {
+    await stripe.subscriptions.update(sub.id, {
+      discounts: [{ coupon: couponId! }],
+      proration_behavior: 'none',
+      payment_behavior: 'allow_incomplete',
+    })
+    
+    await log.info('referral_credit', 'Applied referral credit to subscription', {
+      user_id: user.id,
+      subscription_id: sub.id,
+      customer_id: customerId,
+      coupon_id: couponId,
+    }, user.id);
+
+    // Decrement one credit month, prefer bonus_credit then legacy credit_months
+    const { data: cur } = await admin().from('profiles').select('bonus_credit, credit_months').eq('id', user.id).maybeSingle()
+    const curBonus = Number((cur as any)?.bonus_credit || 0)
+    const curLegacy = Number((cur as any)?.credit_months || 0)
+    if (curBonus > 0) {
+      await admin().from('profiles').update({ bonus_credit: Math.max(0, curBonus - 1) }).eq('id', user.id)
+    } else if (curLegacy > 0) {
+      try {
+        await admin().rpc('add_credit_month', { p_user_id: user.id, p_delta: -1 })
+      } catch (err: any) {
+        const newBal = Math.max(0, curLegacy - 1)
+        await admin().from('profiles').update({ credit_months: newBal }).eq('id', user.id)
+        await log.warn('referral_credit', 'Fallback credit decrement used', {
+          user_id: user.id,
+          error: err?.message,
+        }, user.id);
+      }
     }
+    
+    await track('referral_credit_applied', { userId: user.id, subscriptionId: sub.id })
+    revalidatePath('/dashboard/billing/manage')
+    redirect('/dashboard/billing/manage?status=success&from=referral')
+  } catch (err: any) {
+    await log.error('referral_credit', 'Failed to apply referral credit', {
+      user_id: user.id,
+      subscription_id: sub.id,
+      error: err?.message || String(err),
+    }, user.id, err);
+    redirect('/dashboard/billing/manage?status=error&from=referral-failed')
   }
-  await track('referral_credit_applied', { userId: user.id, subscriptionId: sub.id })
-  revalidatePath('/dashboard/billing/manage')
-  redirect('/dashboard/billing/manage?status=success&from=referral')
 }

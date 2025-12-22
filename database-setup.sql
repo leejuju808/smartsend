@@ -70,10 +70,108 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Marketplace Templates table
+CREATE TABLE IF NOT EXISTS public.marketplace_templates (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  content TEXT NOT NULL,
+  category TEXT,
+  tags TEXT[] DEFAULT '{}',
+  is_paid BOOLEAN DEFAULT false,
+  price_cents INTEGER DEFAULT 0,
+  cover_url TEXT,
+  published BOOLEAN DEFAULT false,
+  visibility TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'draft')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Template Ratings table
+CREATE TABLE IF NOT EXISTS public.template_ratings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id UUID NOT NULL REFERENCES public.marketplace_templates(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stars INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  comment TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  UNIQUE(template_id, user_id)
+);
+
+-- Template Installs table
+CREATE TABLE IF NOT EXISTS public.template_installs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id UUID NOT NULL REFERENCES public.marketplace_templates(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  installed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  UNIQUE(template_id, user_id)
+);
+
+-- Template Events table for analytics
+CREATE TABLE IF NOT EXISTS public.template_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id UUID NOT NULL REFERENCES public.marketplace_templates(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('view', 'install', 'copy', 'export')),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Stats view with average rating + installs count
+CREATE OR REPLACE VIEW public.v_templates_stats AS
+  SELECT t.id,
+         COUNT(DISTINCT i.id) AS installs_count,
+         COALESCE(AVG(r.stars), 0) AS avg_rating,
+         COUNT(r.id) AS rating_count
+  FROM public.marketplace_templates t
+  LEFT JOIN public.template_installs i ON i.template_id = t.id
+  LEFT JOIN public.template_ratings r ON r.template_id = t.id
+  GROUP BY t.id;
+
+-- Public templates view with stats
+CREATE OR REPLACE VIEW public.v_templates_public AS
+  SELECT t.*,
+         s.installs_count,
+         s.avg_rating,
+         s.rating_count
+  FROM public.marketplace_templates t
+  LEFT JOIN public.v_templates_stats s ON s.id = t.id
+  WHERE t.published = true AND t.visibility = 'public';
+
+-- Trending view for last 7 days
+CREATE OR REPLACE VIEW public.v_template_trending_7d AS
+  WITH w AS (
+    SELECT NOW() - INTERVAL '7 days' AS since
+  )
+  SELECT t.id AS template_id,
+         t.title,
+         t.cover_url,
+         t.is_paid,
+         t.price_cents,
+         t.category,
+         -- last 7d event counts
+         COUNT(e.id) FILTER (WHERE e.event_type = 'view' AND e.created_at >= (SELECT since FROM w)) AS views_7d,
+         COUNT(e.id) FILTER (WHERE e.event_type = 'install' AND e.created_at >= (SELECT since FROM w)) AS installs_7d,
+         COUNT(e.id) FILTER (WHERE e.event_type = 'copy' AND e.created_at >= (SELECT since FROM w)) AS copies_7d,
+         COUNT(e.id) FILTER (WHERE e.event_type = 'export' AND e.created_at >= (SELECT since FROM w)) AS exports_7d,
+         -- simple score favoring intentful actions
+         (3 * COUNT(e.id) FILTER (WHERE e.event_type = 'install' AND e.created_at >= (SELECT since FROM w))
+          + 2 * COUNT(e.id) FILTER (WHERE e.event_type = 'copy' AND e.created_at >= (SELECT since FROM w))
+          + 1 * COUNT(e.id) FILTER (WHERE e.event_type = 'view' AND e.created_at >= (SELECT since FROM w))
+         )::INT AS trend_score
+  FROM public.marketplace_templates t
+  LEFT JOIN public.template_events e ON e.template_id = t.id
+  WHERE t.published = true
+  GROUP BY t.id, t.title, t.cover_url, t.is_paid, t.price_cents, t.category;
+
 -- Enable Row Level Security
 -- ALTER TABLE public.users ENABLE ROW LEVEL SECURITY; -- Commented out since users table already has RLS
 ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.marketplace_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.template_ratings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.template_installs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.template_events ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies to avoid duplicate-name errors
 DROP POLICY IF EXISTS "Users can view own email templates" ON public.email_templates;
@@ -92,6 +190,49 @@ CREATE POLICY "Users can view own email templates" ON public.email_templates
 
 CREATE POLICY "Users can view own subscriptions" ON public.subscriptions
   FOR ALL USING (auth.uid() = user_id);
+
+-- Marketplace templates policies
+CREATE POLICY "marketplace_templates_select_public" ON public.marketplace_templates
+  FOR SELECT USING (visibility = 'public' AND published = true);
+
+CREATE POLICY "marketplace_templates_select_owner" ON public.marketplace_templates
+  FOR SELECT USING (auth.uid() = owner_id);
+
+CREATE POLICY "marketplace_templates_insert_owner" ON public.marketplace_templates
+  FOR INSERT WITH CHECK (auth.uid() = owner_id);
+
+CREATE POLICY "marketplace_templates_update_owner" ON public.marketplace_templates
+  FOR UPDATE USING (auth.uid() = owner_id);
+
+CREATE POLICY "marketplace_templates_delete_owner" ON public.marketplace_templates
+  FOR DELETE USING (auth.uid() = owner_id);
+
+-- Ratings policies
+CREATE POLICY "ratings_select_public" ON public.template_ratings
+  FOR SELECT USING (true);
+
+CREATE POLICY "ratings_insert_self" ON public.template_ratings
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "ratings_update_self" ON public.template_ratings
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "ratings_delete_self" ON public.template_ratings
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Installs policies
+CREATE POLICY "installs_select_public" ON public.template_installs
+  FOR SELECT USING (true);
+
+CREATE POLICY "installs_insert_self" ON public.template_installs
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Events policies
+CREATE POLICY "events_select_public" ON public.template_events
+  FOR SELECT USING (true);
+
+CREATE POLICY "events_insert_self" ON public.template_events
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Ensure required columns exist on users table for Stripe mapping
 ALTER TABLE public.users
@@ -396,3 +537,51 @@ alter table public.experiment_events enable row level security;
 create policy "Admin can manage experiments" on public.experiments for all using (auth.uid() in (select id from public.profiles where subscription_status = 'pro' and email like '%@smartsend.ai'));
 create policy "Users can view their own experiment assignments" on public.experiment_assignments for select using (auth.uid() = user_id);
 create policy "Users can view their own experiment events" on public.experiment_events for select using (auth.uid() = user_id);
+
+-- Click Actions System Setup
+-- Add this section to enable dynamic click-based automation
+
+-- Create click_actions table for dynamic click-based automation
+create table if not exists public.click_actions (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid references public.campaigns(id) on delete cascade,
+  match_url text not null,
+  action text not null,   -- tag|followup_campaign|suppress
+  value text,             -- e.g. tag name, campaign_id to start
+  created_at timestamptz default now()
+);
+
+create index if not exists ca_campaign_idx on public.click_actions (campaign_id);
+
+-- Add tags column to contacts table if not exists
+alter table public.contacts add column if not exists tags jsonb default '[]'::jsonb;
+
+-- Create helper RPC function for adding tags to contacts
+create or replace function public.add_contact_tag(p_email text, p_tag text)
+returns void as $$
+begin
+  update public.contacts
+  set tags = case
+    when not (tags ? p_tag) then tags || to_jsonb(array[p_tag])
+    else tags
+  end
+  where lower(email) = lower(p_email);
+end;
+$$ language plpgsql;
+
+-- Enable RLS on click_actions
+alter table public.click_actions enable row level security;
+
+-- Create policy for click_actions (users can only see/modify their own)
+create policy "click_actions_own" on public.click_actions
+  for all using (
+    exists (
+      select 1 from public.campaigns c
+      where c.id = click_actions.campaign_id and c.user_id = auth.uid()
+    )
+  );
+
+-- Enable pg_trgm for fuzzy search
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_marketplace_templates_title_trgm ON public.marketplace_templates USING GIN (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_marketplace_templates_description_trgm ON public.marketplace_templates USING GIN (description gin_trgm_ops);

@@ -5,7 +5,7 @@ export default async function UsageBadge() {
   const { user, status } = await getUserSubscriptionStatus()
   if (!user) return null
   if (isPro(status)) {
-    return <span className="inline-block rounded-full bg-green-100 text-green-800 text-xs px-2.5 py-0.5">Unlimited</span>
+    return <span className="inline-block rounded-full bg-green-100 text-green-800 text-xs px-2.5 py-0.5">Included</span>
   }
   const used = await getUsageCountToday(user.id, 'demo')
   const quota = getFreeDailyQuota('demo')

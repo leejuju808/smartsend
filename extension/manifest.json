@@ -5,6 +5,9 @@
   "description": "AI-powered email replies for Gmail",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["https://mail.google.com/*", "https://smartsend.ai/*"],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
   "action": { 
     "default_popup": "popup.html",
     "default_title": "SmartSendAI"

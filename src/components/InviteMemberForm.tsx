@@ -1,95 +1,100 @@
-"use client"
-import { useEffect, useMemo, useState } from 'react'
-import { createClientComponentClient } from '@/lib/supabase'
-import { canManageMembers } from '@/utils/permissions'
+'use client';
 
-export default function InviteMemberForm() {
-  const supabase = createClientComponentClient()
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'owner' | 'admin' | 'member'>('member')
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
-  const [myRole, setMyRole] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+import { useState } from 'react';
+import { createClientComponentClient } from '@/lib/supabase';
 
-  useEffect(() => {
-    const id = localStorage.getItem('active_workspace')
-    if (id) setWorkspaceId(id)
-  }, [])
+interface InviteMemberFormProps {
+  workspaceId: string;
+  onInviteSent?: () => void;
+}
 
-  useEffect(() => {
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user || !workspaceId) return
-      const { data } = await supabase
-        .from('workspace_members')
-        .select('role')
-        .eq('workspace_id', workspaceId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-      setMyRole((data as any)?.role ?? null)
-    })()
-  }, [supabase, workspaceId])
+export default function InviteMemberForm({ workspaceId, onInviteSent }: InviteMemberFormProps) {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'viewer' | 'member' | 'admin'>('member');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  
+  const supabase = createClientComponentClient();
 
-  const canInvite = useMemo(() => canManageMembers(myRole), [myRole])
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setMessage(null)
-    if (!workspaceId) {
-      setMessage('No active workspace selected.')
-      return
-    }
-    setSubmitting(true)
     try {
-      const { data: session } = await supabase.auth.getSession()
-      const token = session.session?.access_token
-      const resp = await fetch('/api/workspaces/invite', {
+      const response = await fetch('/api/workspaces/invite', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ workspaceId, email, role }),
-      })
-      const json = await resp.json()
-      if (!resp.ok) throw new Error(json?.error || 'Failed')
-      setEmail('')
-      setRole('member')
-      setMessage('Invite sent.')
-    } catch (err: any) {
-      setMessage(err?.message || 'Failed to invite')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, email, role })
+      });
 
-  if (!canInvite) return null
+      const result = await response.json();
+
+      if (result.ok) {
+        setMessage(`Invitation sent to ${email}! Share this link: ${result.inviteUrl}`);
+        setEmail('');
+        onInviteSent?.();
+      } else {
+        setMessage(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      setMessage('Failed to send invitation');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <form onSubmit={onSubmit} className="flex items-center gap-2">
-      <input
-        type="email"
-        placeholder="teammate@company.com"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="rounded-lg border px-3 py-2 text-sm w-64"
-      />
-      <select
-        className="rounded-lg border px-3 py-2 text-sm"
-        value={role}
-        onChange={(e) => setRole(e.target.value as any)}
-      >
-        <option value="owner">Owner</option>
-        <option value="admin">Admin</option>
-        <option value="member">Member</option>
-      </select>
-      <button disabled={submitting} className="rounded-lg bg-black text-white text-sm px-3 py-2 disabled:opacity-50">
-        {submitting ? 'Inviting…' : 'Invite'}
-      </button>
-      {message && <span className="text-xs text-slate-500 ml-2">{message}</span>}
-    </form>
-  )
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium">Invite Team Member</h3>
+      
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Email Address
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2"
+            placeholder="colleague@company.com"
+            required
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Role
+          </label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as any)}
+            className="w-full border rounded-lg px-3 py-2"
+          >
+            <option value="viewer">Viewer - Can view data only</option>
+            <option value="member">Member - Can create and edit</option>
+            <option value="admin">Admin - Can manage team and settings</option>
+          </select>
+        </div>
+        
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? 'Sending...' : 'Send Invitation'}
+        </button>
+      </form>
+      
+      {message && (
+        <div className={`p-3 rounded-lg text-sm ${
+          message.includes('Error') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+        }`}>
+          {message}
+        </div>
+      )}
+    </div>
+  );
 }
 

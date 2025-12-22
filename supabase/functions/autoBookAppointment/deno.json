@@ -1,0 +1,32 @@
+{
+  "imports": {
+    "supabase": "jsr:@supabase/supabase-js@2",
+    "openai": "npm:openai@^4.0.0"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

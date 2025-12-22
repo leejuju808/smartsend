@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface TeamInviteFormProps {
   teamId: string;
 }
 
 export default function TeamInviteForm({ teamId }: TeamInviteFormProps) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -19,7 +21,7 @@ export default function TeamInviteForm({ teamId }: TeamInviteFormProps) {
       const response = await fetch("/api/team/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, teamId }),
       });
 
       if (response.ok) {
@@ -27,7 +29,14 @@ export default function TeamInviteForm({ teamId }: TeamInviteFormProps) {
         setEmail("");
       } else {
         const error = await response.json();
-        setMessage(error.error || "Failed to send invitation");
+        if (error.error === "seat_limit_reached") {
+          setMessage(error.message || "Seat limit reached. Upgrade your plan to add more teammates.");
+          setTimeout(() => {
+            router.push("/dashboard/billing");
+          }, 2000);
+        } else {
+          setMessage(error.error || error.message || "Failed to send invitation");
+        }
       }
     } catch (error) {
       setMessage("Failed to send invitation");

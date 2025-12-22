@@ -1,0 +1,15 @@
+name = "inbound-generic"
+
+[functions."inbound-generic"]
+verify_jwt = false
+
+
+
+
+
+
+
+
+
+
+

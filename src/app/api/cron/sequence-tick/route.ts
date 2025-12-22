@@ -28,6 +28,32 @@ export async function POST(req: Request) {
   let processed = 0;
 
   for (const job of due) {
+    // BLOCK 269700: Missed payment => immediate silence. Don't send; just push the clock.
+    try {
+      const { data: prof } = await supabaseAdmin
+        .from("profiles")
+        .select("subscription_status")
+        .eq("id", job.owner)
+        .maybeSingle();
+      const status = String((prof as any)?.subscription_status || "");
+      const isPaid = status === "active" || status === "trialing";
+      if (!isPaid) {
+        const retryAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+        await supabaseAdmin
+          .from("enrollments")
+          .update({ next_send_at: retryAt.toISOString() })
+          .eq("id", job.id);
+        continue;
+      }
+    } catch {
+      const retryAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+      await supabaseAdmin
+        .from("enrollments")
+        .update({ next_send_at: retryAt.toISOString() })
+        .eq("id", job.id);
+      continue;
+    }
+
     // ensure sequence is running
     const { data: seq } = await supabaseAdmin.from("sequences")
       .select("status, stop_on_reply").eq("id", job.sequence_id).single();

@@ -1,0 +1,12 @@
+-- Seed sequences (optional)
+-- Usage: Replace :project with your project UUID
+-- Example: insert into public.sequences (project_id, name) values ('your-project-uuid-here', 'Warm Follow-up') returning id;
+
+-- To create a sequence with steps, run:
+-- 1. First insert sequence:
+--    insert into public.sequences (project_id, name) values (:project, 'Warm Follow-up') returning id;
+-- 2. Then insert steps (using the returned id as :seq):
+--    insert into public.sequence_steps (sequence_id, step_number, delay_minutes, subject, body)
+--    values
+--    (:seq, 1, 0, 'Quick follow-up', 'Just circling back on my last note — worth a quick chat?'),
+--    (:seq, 2, 1440, 'Any thoughts?', 'Wanted to bump this — happy to send a 2-min Loom if easier.');

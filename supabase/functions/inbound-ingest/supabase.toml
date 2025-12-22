@@ -1,0 +1,8 @@
+name = "inbound-ingest"
+
+[functions."inbound-ingest"]
+verify_jwt = false
+
+
+
+

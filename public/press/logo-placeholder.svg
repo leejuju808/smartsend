@@ -1,0 +1,18 @@
+<svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- AUREV HQ Logo Placeholder -->
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#EAB308;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F59E0B;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Lightning Bolt -->
+  <path d="M15 0 L25 35 L18 35 L28 80 L45 40 L35 40 L50 0 Z" fill="url(#goldGradient)" />
+  
+  <!-- Text -->
+  <text x="60" y="50" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#EAB308">
+    AUREV HQ
+  </text>
+</svg>
+

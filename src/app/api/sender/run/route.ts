@@ -1,6 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase'
 import { unsubscribeLink } from '@/server/unsub'
+import { pixelUrl, clickUrl } from '@/lib/tracking'
 // planLimitsMiddleware and incrementSendCount replaced by atomic counters
 import nodemailer from 'nodemailer'
 
@@ -108,9 +109,56 @@ export async function POST() {
         }
       }
 
-      const finalBody = leadId && ownerEmail
+      // Get workspace_id and campaign_id for tracking
+      let workspaceId: string | null = null;
+      let campaignId: string | null = null;
+      
+      // Try to get workspace_id from user's profile or workspace
+      const { data: workspace } = await sb
+        .from('workspaces')
+        .select('id')
+        .eq('user_id', job.user_id)
+        .maybeSingle()
+      workspaceId = workspace?.id || job.user_id; // fallback to user_id
+      
+      // Try to get campaign_id from email_sends if it exists
+      const { data: emailSend } = await sb
+        .from('email_sends')
+        .select('campaign_id')
+        .eq('id', job.id)
+        .maybeSingle()
+      campaignId = emailSend?.campaign_id || null;
+
+      // Process unsubscribe links
+      const unsubBody = leadId && ownerEmail
         ? job.body.replace(/%UNSUB%/g, `Unsubscribe: ${unsubscribeLink(leadId, ownerEmail)}`)
         : job.body.replace(/%UNSUB%/g, 'Unsubscribe by replying "unsubscribe"')
+
+      // Add tracking if we have the required IDs
+      let finalBody = unsubBody;
+      if (leadId && workspaceId && campaignId) {
+        const baseUrl = process.env.PUBLIC_APP_URL || 'https://app.smartsend.ai';
+        const tokenPayload = { w: workspaceId, l: leadId, c: campaignId };
+
+        // Rewrite links in HTML body for click tracking
+        function rewriteLinks(html: string) {
+          return html.replace(
+            /href="(https?:\/\/[^"]+)"/g,
+            (_m, url) => `href="${clickUrl(baseUrl, tokenPayload, url)}"`
+          );
+        }
+
+        // Append tracking pixel
+        const trackedBody = (() => {
+          const withLinks = rewriteLinks(unsubBody);
+          const px = `<img src="${pixelUrl(baseUrl, tokenPayload)}" alt="" width="1" height="1" style="display:none" />`;
+          return withLinks.includes("</body>")
+            ? withLinks.replace("</body>", `${px}</body>`)
+            : withLinks + px;
+        })();
+        
+        finalBody = trackedBody;
+      }
       // Load SMTP creds
       const { data: mb } = await sb
         .from('mailboxes')

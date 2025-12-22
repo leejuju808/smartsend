@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SmartSend</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        background: #0b0f1a;
+        color: #fff;
+      }
+      .card {
+        width: min(560px, calc(100vw - 32px));
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      .title {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+      .subtitle {
+        font-size: 13px;
+        opacity: 0.8;
+        margin: 0 0 16px;
+        line-height: 1.35;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: #ffffff;
+        color: #0b0f1a;
+        font-weight: 700;
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: transparent;
+        color: #fff;
+      }
+      .hint {
+        margin-top: 14px;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card" id="card" style="display:none">
+      <p class="title">Make SmartSend your default reality</p>
+      <p class="subtitle">
+        When you open a new tab, SmartSend should already be running.
+        Connect once, then this becomes your daily operating screen.
+      </p>
+      <div class="row">
+        <button class="btn" id="connect">Connect extension</button>
+        <button class="btn secondary" id="open">Open SmartSend</button>
+      </div>
+      <div class="hint">
+        Tip: once connected, new tabs will go straight to your Daily screen.
+      </div>
+    </div>
+    <script src="newtab.js"></script>
+  </body>
+</html>

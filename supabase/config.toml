@@ -1,0 +1,553 @@
+# Supabase configuration
+project_id = "smartsend-ai"
+
+[functions.process_queue]
+verify_jwt = false
+
+[functions."campaign-invite-link"]
+verify_jwt = true
+
+[cron.jobs.process_queue]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/process_queue"
+
+[functions.outlook-poller]
+verify_jwt = false
+
+[functions."classify-inbound"]
+verify_jwt = false
+
+[cron.jobs."classify-inbound"]
+schedule = "*/1 * * * *"   # every minute
+endpoint = "/functions/v1/classify-inbound"
+
+[cron.jobs.outlook-poller]
+schedule = "*/3 * * * *"   # every 3 minutes
+endpoint = "/functions/v1/outlook-poller"
+
+[functions."sequence-compiler"]
+verify_jwt = false
+[cron.jobs."sequence-compiler"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/sequence-compiler"
+
+[functions.send_worker]
+verify_jwt = false
+
+[cron.jobs.send_worker]
+schedule = "*/2 * * * *"   # every 2 minutes
+endpoint = "/functions/v1/send_worker"
+
+[functions.sendDaemon]
+verify_jwt = false
+
+[cron.jobs.send_daemon]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/sendDaemon"
+headers = { "x-cron-secret" = "your-unguessable-token" }
+
+[functions.outbox-worker]
+verify_jwt = false
+
+[cron.jobs.outbox-worker]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/outbox-worker"
+
+[functions."poll-gmail"]
+verify_jwt = false
+
+[cron.jobs."poll-gmail"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/poll-gmail"
+
+[functions.detect-reply]
+verify_jwt = false
+
+[cron.jobs.detect-reply-worker]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/detect-reply"
+
+[functions."gmail-poll-inbound"]
+verify_jwt = false
+
+[cron.jobs."gmail-poll-every-2m"]
+schedule = "*/2 * * * *"   # every 2 minutes
+endpoint = "/functions/v1/gmail-poll-inbound"
+
+[functions.enqueue-send]
+verify_jwt = false
+
+[functions.queue-dispatcher]
+verify_jwt = false
+
+[cron.jobs.queue-dispatcher]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/queue-dispatcher"
+
+[functions.gmail-send]
+verify_jwt = false
+
+[functions.gmail-poll]
+verify_jwt = false
+
+[cron.jobs.gmail-poll]
+schedule = "* * * * *"   # Poll every minute
+endpoint = "/functions/v1/gmail-poll"
+
+[functions.detect-replies]
+verify_jwt = false
+
+[cron.jobs.detect-replies]
+schedule = "*/5 * * * *"   # Check for replies every 5 minutes
+endpoint = "/functions/v1/detect-replies"
+
+[functions.ai-customer-agent]
+verify_jwt = false
+
+[cron.jobs.ai-customer-agent]
+schedule = "0 10 * * 5"   # Friday at 10 AM UTC for weekly check-ins
+endpoint = "/functions/v1/ai-customer-agent"
+
+[functions.warmup-tick]
+verify_jwt = false
+
+[cron.jobs.warmup-tick]
+schedule = "0 8 * * *"   # Every day at 8 AM UTC
+endpoint = "/functions/v1/warmup-tick"
+headers = { "x-ss-secret" = "your-warmup-secret-here" }
+
+[functions.sender-tick]
+verify_jwt = false
+
+[cron.jobs.sender-tick]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/sender-tick"
+headers = { "authorization" = "Bearer ${CRON_SECRET}" }
+
+[functions.inbound-pull]
+verify_jwt = false
+
+[cron.jobs.inbound-pull]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/inbound-pull"
+headers = { "authorization" = "Bearer ${CRON_SECRET}" }
+
+[functions."scheduler-tick"]
+verify_jwt = false
+
+[cron.jobs."scheduler-tick"]
+schedule = "*/15 * * * *"   # every 15 minutes (or hourly: "0 * * * *")
+endpoint = "/functions/v1/scheduler-tick"
+
+[functions.send-tick]
+verify_jwt = false
+
+[cron.jobs.send-tick]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/send-tick"
+verify_jwt = false
+
+[functions.wake-tick]
+verify_jwt = false
+
+[cron.jobs.wake-tick]
+schedule = "*/10 * * * *"   # every 10 minutes
+endpoint = "/functions/v1/wake-tick"
+verify_jwt = false
+
+[functions.ingest-bounces]
+verify_jwt = false
+
+[cron.jobs.ingest-bounces]
+schedule = "*/10 * * * *"   # every 10 minutes
+endpoint = "/functions/v1/ingest-bounces"
+
+[functions.health-rollup]
+verify_jwt = false
+
+[cron.jobs.health-rollup]
+schedule = "55 23 * * *"   # daily at 23:55 UTC
+endpoint = "/functions/v1/health-rollup"
+
+[functions."inbound-generic"]
+verify_jwt = false
+
+[functions."sync-gmail"]
+verify_jwt = false
+
+[cron.jobs."sync-gmail"]
+schedule = "15 3 * * *"   # daily fallback while push handles real-time
+endpoint = "/functions/v1/sync-gmail"
+
+[functions."outlook-poll"]
+verify_jwt = false
+
+[cron.jobs."outlook-poll"]
+schedule = "30 3 * * *"   # daily fallback
+endpoint = "/functions/v1/outlook-poll"
+
+[functions."gmail-watch-setup"]
+verify_jwt = false
+
+[functions."inbound-gmail-webhook"]
+verify_jwt = false
+
+[functions."outlook-subscription-setup"]
+verify_jwt = false
+
+[functions."inbound-outlook-webhook"]
+verify_jwt = false
+
+[functions."track-open"]
+verify_jwt = false
+
+[functions."track-redirect"]
+verify_jwt = false
+
+[functions."push-maintenance"]
+verify_jwt = false
+
+[functions."webhook-retry"]
+verify_jwt = false
+
+[cron.jobs."webhook-retry"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/webhook-retry"
+
+[functions."log-inference"]
+verify_jwt = false
+
+[functions."online-metrics-guard"]
+verify_jwt = false
+
+[cron.jobs."online-metrics-guard"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/online-metrics-guard"
+
+[functions."review-sampler"]
+verify_jwt = false
+
+[functions."prompt-evolver-propose"]
+verify_jwt = false
+
+[functions."prompt-evolver-score"]
+verify_jwt = false
+
+[cron.jobs."review-sampler"]
+schedule = "0 * * * *"   # hourly
+endpoint = "/functions/v1/review-sampler"
+
+[cron.jobs."push-maintenance"]
+schedule = "0 4 * * *"   # daily renewal of Gmail/Outlook push subscriptions
+endpoint = "/functions/v1/push-maintenance"
+
+[functions."prompt-evolver-promote"]
+verify_jwt = false
+
+[cron.jobs."prompt-evolver-promote"]
+schedule = "0 6 * * *"   # daily evaluation for prompt promotion
+endpoint = "/functions/v1/prompt-evolver-promote"
+
+[functions."reply-brain-worker"]
+verify_jwt = false
+
+[cron.jobs."reply-brain-worker"]
+schedule = "* * * * *"   # every minute
+endpoint = "/functions/v1/reply-brain-worker"
+
+[functions."roofing-followup-brain-v1"]
+verify_jwt = false
+
+[cron.jobs."roofing-followup-brain-v1"]
+schedule = "0 * * * *"   # every hour - Block 21705 Roofing Follow-Up Brain v1
+endpoint = "/functions/v1/roofing-followup-brain-v1"
+
+[functions."ai-deal-coach"]
+verify_jwt = false
+
+[cron.jobs."ai-deal-coach-daily"]
+schedule = "0 6 * * *"   # Daily at 6 AM UTC
+endpoint = "/functions/v1/ai-deal-coach"
+
+[functions."ai-advisor-weekly-audit"]
+verify_jwt = false
+
+[cron.jobs."ai-advisor-weekly-audit"]
+schedule = "0 6 * * 1"   # Every Monday at 6 AM UTC
+endpoint = "/functions/v1/ai-advisor-weekly-audit"
+
+# Block 26800 - Executive Summary Report v1
+[functions."send-executive-report"]
+verify_jwt = false
+
+[cron.jobs."send-executive-report"]
+schedule = "0 6 * * 1"   # Every Monday at 6 AM UTC
+endpoint = "/functions/v1/send-executive-report"
+
+[functions."run-enrichment-v1"]
+verify_jwt = false
+
+[cron.jobs."run-enrichment-v1"]
+schedule = "*/30 * * * *"   # every 30 minutes
+endpoint = "/functions/v1/run-enrichment-v1"
+
+[functions."reputation-recompute"]
+verify_jwt = false
+
+[cron.jobs."reputation-recompute"]
+schedule = "0 * * * *"   # every hour
+
+[functions."inbox-health-watcher"]
+verify_jwt = false
+
+[cron.jobs."inbox-health-watcher"]
+schedule = "0 2 * * *"   # daily at 2 AM UTC
+endpoint = "/functions/v1/inbox-health-watcher"
+
+# Block 19630 - Inbox AI Classifier & Lead Scoring Worker v1
+[functions."inbox-ai-classifier-worker"]
+verify_jwt = false
+
+[cron.jobs."inbox-ai-classifier-worker"]
+schedule = "*/2 * * * *"   # every 2 minutes - process new inbox messages with AI classification
+endpoint = "/functions/v1/inbox-ai-classifier-worker"
+
+[cron.jobs."reputation-recompute"]
+schedule = "0 * * * *"   # every hour
+endpoint = "/functions/v1/reputation-recompute"
+
+[functions."domain-health-checker"]
+verify_jwt = false
+
+[cron.jobs."domain-health-checker"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/domain-health-checker"
+
+[functions."quota-aware-dispatcher"]
+verify_jwt = false
+
+[cron.jobs."quota-aware-dispatcher"]
+schedule = "*/5 * * * *"   # every 5 minutes
+endpoint = "/functions/v1/quota-aware-dispatcher"
+
+[functions."process-followup-flows"]
+verify_jwt = false
+
+[cron.jobs."process-followup-flows"]
+schedule = "*/2 * * * *"   # every 2 minutes
+endpoint = "/functions/v1/process-followup-flows"
+
+[functions."generate-insights-v1"]
+verify_jwt = false
+
+[cron.jobs."generate-insights-v1"]
+schedule = "0 * * * *"   # every hour
+endpoint = "/functions/v1/generate-insights-v1"
+
+[functions."generate-deal-analytics"]
+verify_jwt = false
+
+[cron.jobs."generate-deal-analytics"]
+schedule = "0 * * * *"   # every hour
+endpoint = "/functions/v1/generate-deal-analytics"
+
+[functions."calendar-sync-inbound"]
+verify_jwt = false
+
+[cron.jobs."calendar-sync-inbound"]
+schedule = "*/10 * * * *"   # every 10 minutes
+endpoint = "/functions/v1/calendar-sync-inbound"
+
+[functions."calendar-sync-outbound"]
+verify_jwt = false
+
+# Block 18400 - Google Calendar Sync (60-second real-time sync)
+[functions."calendar-sync-google"]
+verify_jwt = false
+
+[cron.jobs."calendar-sync-google"]
+schedule = "* * * * *"   # every minute (60 seconds) - real-time calendar sync
+endpoint = "/functions/v1/calendar-sync-google"
+
+[functions."compute-deliverability"]
+verify_jwt = false
+
+[cron.jobs."compute-deliverability"]
+schedule = "0 2 * * *"   # Daily at 2 AM UTC
+endpoint = "/functions/v1/compute-deliverability"
+
+[functions."predictions-engine"]
+verify_jwt = false
+
+[cron.jobs."predictions-engine"]
+schedule = "0 3 * * *"   # Daily at 3 AM UTC (after deliverability)
+endpoint = "/functions/v1/predictions-engine"
+
+# Block 8100 - SmartSend Campaign Flow Optimizer
+[functions."smartsend_scheduler"]
+verify_jwt = false
+
+[cron.jobs."smartsend_scheduler"]
+schedule = "* * * * *"   # every minute - syncs campaigns → queue
+endpoint = "/functions/v1/smartsend_scheduler"
+
+[functions."smartsend_worker"]
+verify_jwt = false
+
+[cron.jobs."smartsend_worker"]
+schedule = "* * * * *"   # every minute - processes queued emails
+endpoint = "/functions/v1/smartsend_worker"
+
+# Block 10600 - Multi-Step Follow-Up Engine
+[functions."followup-engine"]
+verify_jwt = false
+
+[cron.jobs."followup-engine"]
+schedule = "0 * * * *"   # every hour - execute follow-up rules
+endpoint = "/functions/v1/followup-engine"
+
+# Block 21728 - SmartSend Roofing Lead Status Brain v1
+[functions."auto-update-lead-status"]
+verify_jwt = false
+
+[cron.jobs."auto-update-lead-status"]
+schedule = "0 * * * *"   # every hour - auto-update lead statuses based on time rules
+endpoint = "/functions/v1/auto-update-lead-status"
+
+# Block 10600 - SmartSend Auto-Follow-Up Brain v1
+[functions."followup-brain-engine"]
+verify_jwt = false
+
+[cron.jobs."followup-brain-engine"]
+schedule = "0 * * * *"   # every hour - execute follow-up brain (no reply, warm, hot, negative)
+endpoint = "/functions/v1/followup-brain-engine"
+
+# Block 8880 - Auto-Follow-Up Brain v1
+[functions."auto-followup-scheduler"]
+verify_jwt = false
+
+[cron.jobs."auto-followup-scheduler"]
+schedule = "*/20 * * * *"   # every 20 minutes - no-reply follow-up scheduler
+endpoint = "/functions/v1/auto-followup-scheduler"
+
+# Block 21707 - SmartSend Roofing Follow-Up Scheduler Engine v1
+[functions."followup-scheduler"]
+verify_jwt = false
+
+[cron.jobs."followup-scheduler"]
+schedule = "*/5 * * * *"   # every 5 minutes - Block 21707 follow-up scheduler engine
+endpoint = "/functions/v1/followup-scheduler"
+
+[functions."handle-followup-reply-intent"]
+verify_jwt = false
+
+[functions."handle-followup-pipeline"]
+verify_jwt = false
+
+# Block 14500 - SmartSend Follow-Up Sequencer v2
+[functions."followup-sequencer-v2"]
+verify_jwt = false
+
+[cron.jobs."followup-sequencer-v2"]
+schedule = "0 * * * *"   # every hour - process due follow-ups with behavior-based timing
+endpoint = "/functions/v1/followup-sequencer-v2"
+
+# Block 11600 - SmartSend Sending Health Monitor v1
+[functions."deliverability-check"]
+verify_jwt = false
+
+[cron.jobs."deliverability-check"]
+schedule = "0 * * * *"   # every hour - compute health scores
+endpoint = "/functions/v1/deliverability-check"
+
+[functions."deliverability-actions"]
+verify_jwt = false
+
+[cron.jobs."deliverability-actions"]
+schedule = "0 * * * *"   # every hour - execute safety rules (after check)
+
+# Block 85000 - SmartSend Roofing "Owner KPI Dashboard + Business Health Score Engine" v1
+[functions."kpi-nightly-snapshot"]
+verify_jwt = false
+
+[cron.jobs."kpi-nightly-snapshot"]
+schedule = "0 2 * * *"   # Daily at 2 AM UTC - Calculate daily KPI snapshots
+endpoint = "/functions/v1/kpi-nightly-snapshot"
+
+# Block 24220 - SmartSend Quote Follow-Up Engine v1
+[functions."quote-followup-processor"]
+verify_jwt = false
+
+[cron.jobs."quote-followup-processor"]
+schedule = "*/5 * * * *"   # every 5 minutes - process due quote follow-ups
+endpoint = "/functions/v1/quote-followup-processor"
+
+# Block 28844 - SmartSend Quote Revival Engine v1
+[functions."schedule-quote-revival"]
+verify_jwt = false
+
+[cron.jobs."schedule-quote-revival"]
+schedule = "0 * * * *"   # every hour - detect stalled quotes and schedule revival sequences
+endpoint = "/functions/v1/schedule-quote-revival"
+
+[functions."send-revival-message"]
+verify_jwt = false
+
+[cron.jobs."send-revival-message"]
+schedule = "*/5 * * * *"   # every 5 minutes - send due revival messages
+endpoint = "/functions/v1/send-revival-message"
+
+# Block 20800 - Roofing Calendar Sync v1
+[functions."calendar-followup-checks"]
+verify_jwt = false
+
+[cron.jobs."calendar-followup-checks"]
+schedule = "0 * * * *"   # every hour - check for unresponsive adjusters, missed homeowner follow-ups, and past install dates
+endpoint = "/functions/v1/calendar-followup-checks"
+
+# Block 21900 - SmartSend Roofing Action Queue v1
+[functions."build-action-queue"]
+verify_jwt = false
+
+# Note: This function is called per-workspace. 
+# For cron, you would need a wrapper that iterates through all workspaces.
+# For now, it's called on-demand via POST /api/action-queue
+
+# Block 30041 - SmartSend Roofing "Storm Event Lead Surge Engine" v1
+[functions."storm-detect"]
+verify_jwt = false
+
+[cron.jobs."storm-detect"]
+schedule = "0 */2 * * *"   # every 2 hours - detect storms from NOAA API
+endpoint = "/functions/v1/storm-detect"
+
+[functions."storm-boost"]
+verify_jwt = false
+
+[cron.jobs."storm-boost"]
+schedule = "*/30 * * * *"   # every 30 minutes - apply storm boosts to leads
+endpoint = "/functions/v1/storm-boost"
+
+# Block 55000 - SmartSend Roofing Vehicle Fleet Tracking v1
+[functions."vehicles-maintenance-scan"]
+verify_jwt = false
+
+[cron.jobs."vehicles-maintenance-scan"]
+schedule = "0 6 * * *"   # daily at 6 AM UTC - scan for overdue vehicle maintenance
+endpoint = "/functions/v1/vehicles-maintenance-scan"
+
+# Block 59000 - SmartSend Roofing "AI Sales Coach + Objection Handling System" v1
+[functions."sales/followup-send"]
+verify_jwt = false
+
+[cron.jobs."sales-followup-send"]
+schedule = "*/15 * * * *"   # every 15 minutes - send scheduled sales follow-ups
+endpoint = "/functions/v1/sales/followup-send"
+
+# Block 252500 - SmartSend Subcontractor Management System v1
+[functions."sub-compliance-alerts"]
+verify_jwt = false
+
+[cron.jobs."sub-compliance-alerts"]
+schedule = "0 6 * * *"   # Daily at 6 AM UTC - check for expired/expiring subcontractor documents
+endpoint = "/functions/v1/sub-compliance-alerts"

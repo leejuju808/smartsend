@@ -1,0 +1,36 @@
+feat(hq-enterprise): global scale & partnerships
+
+Complete enterprise expansion infrastructure for AUREV HQ:
+- infra: multi-region clusters + SSO
+- bizdev: partner program + enterprise licensing
+- integrations: Salesforce, SAP, ServiceNow scaffolding
+- marketing: global PR foundation + partner summit prep
+
+Database:
+- enterprise_contracts: Growth/Scale/Enterprise tiers
+- regional_partners: 5-region partner program
+- sso_configurations: SAML 2.0, Azure AD, Google Workspace
+- enterprise_integrations: Salesforce, SAP, ServiceNow, M365
+- region_assignments: multi-region infrastructure
+- partner_revenue: revenue share tracking
+- enterprise_kpis: expansion metrics
+
+APIs:
+- /api/enterprise/contracts - contract management
+- /api/enterprise/pricing - pricing tiers
+- /api/enterprise/kpis - KPI tracking
+- /api/partners - partner management
+- /api/partners/portal/metrics - partner portal
+- /api/sso/config - SSO configuration
+- /api/integrations/enterprise - integration management
+
+Dashboards:
+- /enterprise/dashboard - enterprise expansion KPIs
+- /partners/portal - partner revenue & orgs
+
+Targets:
+- 1,000+ active orgs
+- 20 enterprise contracts
+- 5 regional HQ partners
+- $250K MRR by Dec 2026
+

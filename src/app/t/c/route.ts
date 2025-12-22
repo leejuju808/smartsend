@@ -1,55 +1,54 @@
-export const runtime = "nodejs";
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { verify } from "@/lib/events-sign";
+import { createClient } from "@supabase/supabase-js";
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const cid = url.searchParams.get("cid") || "";
-  const rid = url.searchParams.get("rid") || "";
-  const b64 = url.searchParams.get("u") || "";
-  const s = url.searchParams.get("s") || "";
-  let target = "";
-  try {
-    target = Buffer.from(b64, "base64").toString("utf8");
-  } catch {
-    /* noop */
+export async function GET(req: Request) {
+  const u = new URL(req.url);
+  const sl = u.searchParams.get("sl");       // send_log_id
+  const url = u.searchParams.get("u");       // destination (encoded)
+  const tk = u.searchParams.get("tk");
+
+  if (!sl || !url || !tk) {
+    return new Response("Bad Request", { status: 400 });
   }
 
-  if (!cid || !rid || !target || !/^https?:\/\//i.test(target) || !verify(`${cid}:${rid}:${b64}`, s)) {
-    return NextResponse.redirect("https://smartsend.ai", 302);
+  const dest = decodeURIComponent(url);
+
+  const payload = `click:${sl}:${dest}`;
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  
+  const { data: ok } = await admin.rpc("_verify", { 
+    p: payload, 
+    tok: tk 
+  });
+
+  if (ok) {
+    const { data: log } = await admin
+      .from("send_logs")
+      .select("id, campaign_id, lead_id")
+      .eq("id", sl)
+      .maybeSingle();
+
+    if (log) {
+      const ua = req.headers.get("user-agent") || "";
+      const ipHeader = req.headers.get("x-forwarded-for") || 
+                       req.headers.get("cf-connecting-ip") || 
+                       "";
+      const ip = ipHeader.split(",")[0].trim() || null;
+
+      await admin.rpc("_record_tracking", {
+        p_kind: "click",
+        p_campaign: log.campaign_id,
+        p_send_log: log.id,
+        p_lead: log.lead_id,
+        p_url: dest,
+        p_ua: ua,
+        p_ip: ip,
+        p_meta: {}
+      }).catch(() => {});
+    }
   }
 
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: recip } = await supabase
-    .from("campaign_recipients")
-    .select("id,user_id,campaign_id")
-    .eq("id", rid)
-    .eq("campaign_id", cid)
-    .single();
-
-  if (recip) {
-    const ip = req.headers.get("x-forwarded-for") || (req as any).ip || "";
-    const ua = req.headers.get("user-agent") || "";
-    await Promise.all([
-      supabase.from("email_events").insert({
-        user_id: (recip as any).user_id,
-        campaign_id: (recip as any).campaign_id,
-        recipient_id: (recip as any).id,
-        type: "click",
-        url: target,
-        ua,
-        ip,
-      }),
-      supabase
-        .from("campaign_recipients")
-        .update({ click_count: (1 as any), last_click_at: new Date().toISOString() })
-        .eq("id", (recip as any).id)
-        .select(),
-    ]);
-  }
-
-  return NextResponse.redirect(target, 302);
+  return Response.redirect(dest, 302);
 }
-

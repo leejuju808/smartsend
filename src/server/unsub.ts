@@ -34,6 +34,6 @@ export function verifyUnsubToken(token: string) {
 
 export function unsubscribeLink(leadId: string, ownerEmail: string) {
   const token = makeUnsubToken(leadId, ownerEmail);
-  return `${SITE}/unsubscribe?token=${encodeURIComponent(token)}`;
+  return `${SITE}/unsubscribe/token?token=${encodeURIComponent(token)}`;
 }
 

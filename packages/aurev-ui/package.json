@@ -1,0 +1,32 @@
+{
+  "name": "@aurev/ui",
+  "version": "2.0.0",
+  "main": "index.ts",
+  "type": "module",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./tailwind": "./tailwind.config.js"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "tailwindcss": "^3.4.0",
+    "@radix-ui/react-dialog": "^1.0.0",
+    "lucide-react": "^0.292.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "react-dom": "^18.2.0 || ^19.0.0"
+  }
+}
+
+
+
+
+
+
+
+
+

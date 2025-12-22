@@ -1,0 +1,4 @@
+email,first_name,last_name,company,title,website,notes
+alex@contoso.com,Alex,Chen,Contoso,Ops Manager,https://contoso.com,"Uses HubSpot; West Coast"
+maria@acme.io,Maria,Diaz,Acme Inc,Founder,https://acme.io,"Interested in AI booking"
+john@example.com,John,Smith,Example Corp,Developer,https://example.com,"Looking for automation tools"

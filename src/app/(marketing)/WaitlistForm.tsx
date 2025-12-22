@@ -7,10 +7,14 @@ export default function WaitlistForm() {
 
   async function submit() {
     setStatus("loading");
+    // Get source from URL params or default to 'direct'
+    const urlParams = new URLSearchParams(window.location.search);
+    const source = urlParams.get('source') || urlParams.get('utm_source') || 'direct';
+    
     const r = await fetch("/api/waitlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, source })
     });
     if (r.ok) setStatus("done"); else setStatus("error");
   }

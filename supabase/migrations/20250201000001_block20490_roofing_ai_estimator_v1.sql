@@ -1,0 +1,867 @@
+-- =========================================================
+-- Block 20490 — SmartSend Roofing AI Estimator v1
+-- (Instant Price Generator From Roof Scope + Market Rates + Insurance Data)
+-- =========================================================
+--
+-- This block gives roofers EXACTLY what they've always wanted but never had:
+-- - An instant roofing estimate generated automatically
+-- - Using the scope (squares, pitch, material, labor)
+-- - With market pricing for their zip code
+-- - Matching or outperforming the insurance estimate
+--
+-- No more guessing. No more spreadsheets. No more "let me get back to you."
+-- SmartSend turns every parsed scope into a real, ready-to-send roofing estimate.
+-- =========================================================
+
+-- ============================================================================
+-- PART 1 — Market Pricing Dataset (Starter version with national defaults)
+-- ============================================================================
+-- Later upgraded to zip-code pricing
+
+CREATE TABLE IF NOT EXISTS public.market_pricing_dataset (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  zip_code text, -- NULL = national default
+  
+  -- Base installation rates per square
+  asphalt_shingle_install_min numeric(10,2) DEFAULT 350.00,
+  asphalt_shingle_install_max numeric(10,2) DEFAULT 550.00,
+  asphalt_shingle_install_avg numeric(10,2) DEFAULT 425.00,
+  
+  -- Additional charges
+  steep_charge_per_sq_min numeric(10,2) DEFAULT 30.00,
+  steep_charge_per_sq_max numeric(10,2) DEFAULT 50.00,
+  steep_charge_per_sq_avg numeric(10,2) DEFAULT 45.00,
+  
+  two_story_charge_per_sq_min numeric(10,2) DEFAULT 10.00,
+  two_story_charge_per_sq_max numeric(10,2) DEFAULT 20.00,
+  two_story_charge_per_sq_avg numeric(10,2) DEFAULT 15.00,
+  
+  -- Material costs
+  decking_per_sheet numeric(10,2) DEFAULT 65.00,
+  ridge_vent_per_ft_min numeric(10,2) DEFAULT 8.00,
+  ridge_vent_per_ft_max numeric(10,2) DEFAULT 12.00,
+  ridge_vent_per_ft_avg numeric(10,2) DEFAULT 10.00,
+  
+  ice_and_water_shield_per_sq numeric(10,2) DEFAULT 55.00,
+  drip_edge_per_ft numeric(10,2) DEFAULT 3.50,
+  starter_per_ft numeric(10,2) DEFAULT 2.00,
+  
+  -- Metadata
+  is_national_default boolean DEFAULT true,
+  effective_date date DEFAULT CURRENT_DATE,
+  expires_at date,
+  
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  
+  UNIQUE(workspace_id, zip_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_pricing_workspace ON public.market_pricing_dataset(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_market_pricing_zip ON public.market_pricing_dataset(zip_code) WHERE zip_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_market_pricing_default ON public.market_pricing_dataset(is_national_default) WHERE is_national_default = true;
+
+-- Insert national default pricing
+INSERT INTO public.market_pricing_dataset (
+  workspace_id,
+  zip_code,
+  is_national_default,
+  asphalt_shingle_install_min,
+  asphalt_shingle_install_max,
+  asphalt_shingle_install_avg,
+  steep_charge_per_sq_min,
+  steep_charge_per_sq_max,
+  steep_charge_per_sq_avg,
+  two_story_charge_per_sq_min,
+  two_story_charge_per_sq_max,
+  two_story_charge_per_sq_avg,
+  decking_per_sheet,
+  ridge_vent_per_ft_min,
+  ridge_vent_per_ft_max,
+  ridge_vent_per_ft_avg,
+  ice_and_water_shield_per_sq,
+  drip_edge_per_ft,
+  starter_per_ft
+)
+SELECT 
+  NULL, -- National default (no workspace_id)
+  NULL, -- National default (no zip_code)
+  true,
+  350.00,
+  550.00,
+  425.00,
+  30.00,
+  50.00,
+  45.00,
+  10.00,
+  20.00,
+  15.00,
+  65.00,
+  8.00,
+  12.00,
+  10.00,
+  55.00,
+  3.50,
+  2.00
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.market_pricing_dataset WHERE is_national_default = true AND workspace_id IS NULL
+);
+
+-- ============================================================================
+-- PART 2 — Contractor Estimate Preferences
+-- ============================================================================
+-- Extend contractor_pricing table with estimate-specific preferences
+
+ALTER TABLE IF EXISTS public.contractor_pricing
+  ADD COLUMN IF NOT EXISTS desired_profit_margin numeric(5,2) DEFAULT 20.00 CHECK (desired_profit_margin >= 0 AND desired_profit_margin <= 100),
+  ADD COLUMN IF NOT EXISTS markup_on_materials numeric(5,2) DEFAULT 0.00 CHECK (markup_on_materials >= 0),
+  ADD COLUMN IF NOT EXISTS include_o_and_p_automatically boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS o_and_p_percent numeric(5,2) DEFAULT 20.00 CHECK (o_and_p_percent >= 0 AND o_and_p_percent <= 100);
+
+-- ============================================================================
+-- PART 3 — Roof Estimate Table (Detailed breakdown)
+-- ============================================================================
+-- Stores the detailed estimate breakdown generated by Block 20490
+
+CREATE TABLE IF NOT EXISTS public.roof_estimates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id uuid NOT NULL REFERENCES public.inbox_threads(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  
+  -- Link to parsed roof scope (from block 20380)
+  insurance_attachment_id uuid REFERENCES public.insurance_attachments(id) ON DELETE SET NULL,
+  
+  -- Base pricing breakdown
+  base_rate_per_sq numeric(10,2) NOT NULL,
+  squares numeric(5,2) NOT NULL,
+  steep_charge numeric(10,2) DEFAULT 0,
+  two_story_charge numeric(10,2) DEFAULT 0,
+  ice_and_water numeric(10,2) DEFAULT 0,
+  ridge_vent_rate numeric(10,2) DEFAULT 0,
+  drip_edge_cost numeric(10,2) DEFAULT 0,
+  starter_cost numeric(10,2) DEFAULT 0,
+  decking_cost numeric(10,2) DEFAULT 0,
+  
+  -- Calculated totals
+  calculated_total numeric(12,2) NOT NULL,
+  profit_margin numeric(5,2) DEFAULT 20.00,
+  final_bid_price numeric(12,2) NOT NULL,
+  
+  -- Insurance comparison
+  insurance_rcv numeric(12,2),
+  insurance_acv numeric(12,2),
+  insurance_deductible numeric(12,2),
+  insurance_depreciation numeric(12,2),
+  insurance_o_and_p_included boolean DEFAULT false,
+  
+  -- Supplement detection
+  missing_items_supplements jsonb DEFAULT '[]'::jsonb, -- Array of missing items
+  supplement_value_estimate numeric(12,2) DEFAULT 0,
+  
+  -- Market pricing source
+  pricing_source text DEFAULT 'national_default', -- 'national_default', 'zip_code', 'custom'
+  zip_code text,
+  
+  -- Estimate status
+  status text DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'approved', 'rejected')),
+  
+  -- Metadata
+  generated_at timestamptz NOT NULL DEFAULT now(),
+  generated_by text DEFAULT 'ai_estimator_v1',
+  generation_metadata jsonb DEFAULT '{}'::jsonb,
+  
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  
+  UNIQUE(thread_id, status) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX IF NOT EXISTS idx_roof_estimates_thread ON public.roof_estimates(thread_id);
+CREATE INDEX IF NOT EXISTS idx_roof_estimates_workspace ON public.roof_estimates(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_roof_estimates_status ON public.roof_estimates(status);
+CREATE INDEX IF NOT EXISTS idx_roof_estimates_zip ON public.roof_estimates(zip_code) WHERE zip_code IS NOT NULL;
+
+-- ============================================================================
+-- PART 4 — Roof Estimate Line Items
+-- ============================================================================
+-- Detailed line items for each estimate
+
+CREATE TABLE IF NOT EXISTS public.roof_estimate_line_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  roof_estimate_id uuid NOT NULL REFERENCES public.roof_estimates(id) ON DELETE CASCADE,
+  
+  -- Line item details
+  line_number integer NOT NULL,
+  description text NOT NULL,
+  category text CHECK (category IN (
+    'base_installation',
+    'steep_charge',
+    'two_story_access',
+    'materials',
+    'code_items',
+    'supplements',
+    'other'
+  )),
+  
+  -- Pricing
+  quantity numeric(10,2) DEFAULT 1.0,
+  unit text DEFAULT 'square', -- 'square', 'linear_foot', 'each', 'sheet'
+  unit_price numeric(10,2) NOT NULL,
+  cost numeric(12,2) NOT NULL,
+  
+  -- Metadata
+  is_code_required boolean DEFAULT false,
+  is_supplement boolean DEFAULT false,
+  notes text,
+  
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  
+  UNIQUE(roof_estimate_id, line_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_roof_estimate_line_items_estimate ON public.roof_estimate_line_items(roof_estimate_id);
+CREATE INDEX IF NOT EXISTS idx_roof_estimate_line_items_category ON public.roof_estimate_line_items(category);
+
+-- ============================================================================
+-- PART 5 — Functions: Get Market Pricing
+-- ============================================================================
+
+-- Get market pricing for a zip code (falls back to national default)
+CREATE OR REPLACE FUNCTION public.get_market_pricing(
+  p_zip_code text DEFAULT NULL,
+  p_workspace_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_pricing jsonb;
+BEGIN
+  -- Try to get zip-code specific pricing first
+  IF p_zip_code IS NOT NULL THEN
+    SELECT jsonb_build_object(
+      'asphalt_shingle_install_avg', asphalt_shingle_install_avg,
+      'steep_charge_per_sq_avg', steep_charge_per_sq_avg,
+      'two_story_charge_per_sq_avg', two_story_charge_per_sq_avg,
+      'ridge_vent_per_ft_avg', ridge_vent_per_ft_avg,
+      'ice_and_water_shield_per_sq', ice_and_water_shield_per_sq,
+      'drip_edge_per_ft', drip_edge_per_ft,
+      'starter_per_ft', starter_per_ft,
+      'decking_per_sheet', decking_per_sheet,
+      'pricing_source', 'zip_code'
+    )
+    INTO v_pricing
+    FROM public.market_pricing_dataset
+    WHERE zip_code = p_zip_code
+      AND (workspace_id = p_workspace_id OR workspace_id IS NULL)
+      AND (expires_at IS NULL OR expires_at > CURRENT_DATE)
+    ORDER BY workspace_id NULLS LAST -- Prefer workspace-specific over national
+    LIMIT 1;
+  END IF;
+  
+  -- Fall back to national default if no zip-code pricing found
+  IF v_pricing IS NULL THEN
+    SELECT jsonb_build_object(
+      'asphalt_shingle_install_avg', asphalt_shingle_install_avg,
+      'steep_charge_per_sq_avg', steep_charge_per_sq_avg,
+      'two_story_charge_per_sq_avg', two_story_charge_per_sq_avg,
+      'ridge_vent_per_ft_avg', ridge_vent_per_ft_avg,
+      'ice_and_water_shield_per_sq', ice_and_water_shield_per_sq,
+      'drip_edge_per_ft', drip_edge_per_ft,
+      'starter_per_ft', starter_per_ft,
+      'decking_per_sheet', decking_per_sheet,
+      'pricing_source', 'national_default'
+    )
+    INTO v_pricing
+    FROM public.market_pricing_dataset
+    WHERE is_national_default = true
+      AND workspace_id IS NULL
+    LIMIT 1;
+  END IF;
+  
+  -- Final fallback to hardcoded defaults
+  IF v_pricing IS NULL THEN
+    v_pricing := jsonb_build_object(
+      'asphalt_shingle_install_avg', 425.00,
+      'steep_charge_per_sq_avg', 45.00,
+      'two_story_charge_per_sq_avg', 15.00,
+      'ridge_vent_per_ft_avg', 10.00,
+      'ice_and_water_shield_per_sq', 55.00,
+      'drip_edge_per_ft', 3.50,
+      'starter_per_ft', 2.00,
+      'decking_per_sheet', 65.00,
+      'pricing_source', 'hardcoded_default'
+    );
+  END IF;
+  
+  RETURN v_pricing;
+END;
+$$;
+
+-- ============================================================================
+-- PART 6 — Functions: Calculate Roof Estimate
+-- ============================================================================
+
+-- Main function to calculate roofing estimate from parsed scope
+CREATE OR REPLACE FUNCTION public.calculate_roof_estimate(
+  p_thread_id uuid,
+  p_workspace_id uuid,
+  p_roof_scope jsonb,
+  p_claim_financials jsonb DEFAULT '{}'::jsonb,
+  p_profitability_signals jsonb DEFAULT '{}'::jsonb,
+  p_zip_code text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_squares numeric;
+  v_material text;
+  v_stories integer;
+  v_steep_charge_flag boolean;
+  v_line_items jsonb;
+  
+  v_base_rate_per_sq numeric;
+  v_steep_charge_per_sq numeric;
+  v_two_story_charge_per_sq numeric;
+  v_ridge_vent_rate numeric;
+  v_ice_water_rate numeric;
+  v_drip_edge_rate numeric;
+  v_starter_rate numeric;
+  v_decking_rate numeric;
+  
+  v_base_install_cost numeric;
+  v_steep_charge_cost numeric := 0;
+  v_two_story_cost numeric := 0;
+  v_ice_water_cost numeric := 0;
+  v_ridge_vent_cost numeric := 0;
+  v_drip_edge_cost numeric := 0;
+  v_starter_cost numeric := 0;
+  v_decking_cost numeric := 0;
+  
+  v_calculated_total numeric;
+  v_profit_margin numeric;
+  v_final_bid_price numeric;
+  
+  v_insurance_rcv numeric;
+  v_insurance_acv numeric;
+  v_insurance_deductible numeric;
+  v_insurance_depreciation numeric;
+  v_o_and_p_included boolean;
+  
+  v_missing_items jsonb := '[]'::jsonb;
+  v_supplement_value numeric := 0;
+  
+  v_pricing_data jsonb;
+  v_contractor_prefs jsonb;
+  v_result jsonb;
+  v_line_items_array jsonb := '[]'::jsonb;
+  v_line_item jsonb;
+  v_ridge_length_ft numeric;
+  v_perimeter_ft numeric;
+BEGIN
+  -- Extract roof scope data
+  v_squares := (p_roof_scope->>'total_squares')::numeric;
+  v_material := p_roof_scope->>'material';
+  v_stories := (p_roof_scope->>'stories')::integer;
+  v_steep_charge_flag := COALESCE((p_roof_scope->>'steep_charge')::boolean, false);
+  v_line_items := COALESCE(p_roof_scope->'line_items', '[]'::jsonb);
+  
+  -- Get market pricing
+  v_pricing_data := public.get_market_pricing(p_zip_code, p_workspace_id);
+  
+  v_base_rate_per_sq := (v_pricing_data->>'asphalt_shingle_install_avg')::numeric;
+  v_steep_charge_per_sq := (v_pricing_data->>'steep_charge_per_sq_avg')::numeric;
+  v_two_story_charge_per_sq := (v_pricing_data->>'two_story_charge_per_sq_avg')::numeric;
+  v_ridge_vent_rate := (v_pricing_data->>'ridge_vent_per_ft_avg')::numeric;
+  v_ice_water_rate := (v_pricing_data->>'ice_and_water_shield_per_sq')::numeric;
+  v_drip_edge_rate := (v_pricing_data->>'drip_edge_per_ft')::numeric;
+  v_starter_rate := (v_pricing_data->>'starter_per_ft')::numeric;
+  v_decking_rate := (v_pricing_data->>'decking_per_sheet')::numeric;
+  
+  -- Get contractor preferences
+  SELECT jsonb_build_object(
+    'desired_profit_margin', COALESCE(desired_profit_margin, 20.00),
+    'markup_on_materials', COALESCE(markup_on_materials, 0.00),
+    'include_o_and_p_automatically', COALESCE(include_o_and_p_automatically, false),
+    'o_and_p_percent', COALESCE(o_and_p_percent, 20.00)
+  )
+  INTO v_contractor_prefs
+  FROM public.contractor_pricing
+  WHERE workspace_id = p_workspace_id
+  LIMIT 1;
+  
+  -- Default contractor preferences if not found
+  IF v_contractor_prefs IS NULL THEN
+    v_contractor_prefs := jsonb_build_object(
+      'desired_profit_margin', 20.00,
+      'markup_on_materials', 0.00,
+      'include_o_and_p_automatically', false,
+      'o_and_p_percent', 20.00
+    );
+  END IF;
+  
+  v_profit_margin := (v_contractor_prefs->>'desired_profit_margin')::numeric;
+  
+  -- Calculate base installation cost
+  v_base_install_cost := v_squares * v_base_rate_per_sq;
+  
+  -- Add line item for base installation
+  v_line_item := jsonb_build_object(
+    'line_number', 1,
+    'description', 'Remove & replace arch shingles',
+    'category', 'base_installation',
+    'quantity', v_squares,
+    'unit', 'square',
+    'unit_price', v_base_rate_per_sq,
+    'cost', v_base_install_cost
+  );
+  v_line_items_array := v_line_items_array || jsonb_build_array(v_line_item);
+  
+  -- Calculate steep charge if applicable
+  IF v_steep_charge_flag THEN
+    v_steep_charge_cost := v_squares * v_steep_charge_per_sq;
+    v_line_item := jsonb_build_object(
+      'line_number', jsonb_array_length(v_line_items_array) + 1,
+      'description', 'Steep charge',
+      'category', 'steep_charge',
+      'quantity', v_squares,
+      'unit', 'square',
+      'unit_price', v_steep_charge_per_sq,
+      'cost', v_steep_charge_cost
+    );
+    v_line_items_array := v_line_items_array || jsonb_build_array(v_line_item);
+  END IF;
+  
+  -- Calculate 2-story charge if applicable
+  IF v_stories >= 2 THEN
+    v_two_story_cost := v_squares * v_two_story_charge_per_sq;
+    v_line_item := jsonb_build_object(
+      'line_number', jsonb_array_length(v_line_items_array) + 1,
+      'description', '2-story access',
+      'category', 'two_story_access',
+      'quantity', v_squares,
+      'unit', 'square',
+      'unit_price', v_two_story_charge_per_sq,
+      'cost', v_two_story_cost
+    );
+    v_line_items_array := v_line_items_array || jsonb_build_array(v_line_item);
+  END IF;
+  
+  -- Estimate ridge length (rough: ~1.2x square root of squares * 10)
+  v_ridge_length_ft := SQRT(v_squares * 100) * 1.2;
+  
+  -- Estimate perimeter (rough: ~4x square root of squares * 10)
+  v_perimeter_ft := SQRT(v_squares * 100) * 4;
+  
+  -- Check for ice & water shield in line items or add if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_line_items) li
+    WHERE li->>'description' ILIKE '%ice%water%' OR li->>'description' ILIKE '%ice and water%'
+  ) THEN
+    -- Estimate ice & water shield (typically 3 squares worth for valleys/eaves)
+    v_ice_water_cost := 3.0 * v_ice_water_rate;
+    v_line_item := jsonb_build_object(
+      'line_number', jsonb_array_length(v_line_items_array) + 1,
+      'description', format('Ice & water shield (%s squares)', 3),
+      'category', 'materials',
+      'quantity', 3.0,
+      'unit', 'square',
+      'unit_price', v_ice_water_rate,
+      'cost', v_ice_water_cost,
+      'is_code_required', true
+    );
+    v_line_items_array := v_line_items_array || jsonb_build_array(v_line_item);
+  END IF;
+  
+  -- Check for ridge vent in line items or add if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_line_items) li
+    WHERE li->>'description' ILIKE '%ridge%vent%'
+  ) THEN
+    v_ridge_vent_cost := v_ridge_length_ft * v_ridge_vent_rate;
+    v_line_item := jsonb_build_object(
+      'line_number', jsonb_array_length(v_line_items_array) + 1,
+      'description', format('Ridge vent (%s feet)', ROUND(v_ridge_length_ft, 0)),
+      'category', 'materials',
+      'quantity', v_ridge_length_ft,
+      'unit', 'linear_foot',
+      'unit_price', v_ridge_vent_rate,
+      'cost', v_ridge_vent_cost,
+      'is_code_required', true
+    );
+    v_line_items_array := v_line_items_array || jsonb_build_array(v_line_item);
+  END IF;
+  
+  -- Calculate total before profit margin
+  v_calculated_total := v_base_install_cost + v_steep_charge_cost + v_two_story_cost + 
+                        v_ice_water_cost + v_ridge_vent_cost + v_drip_edge_cost + 
+                        v_starter_cost + v_decking_cost;
+  
+  -- Apply profit margin
+  v_final_bid_price := v_calculated_total * (1 + (v_profit_margin / 100.0));
+  
+  -- Extract insurance financials
+  v_insurance_rcv := (p_claim_financials->>'rcv_total')::numeric;
+  v_insurance_acv := (p_claim_financials->>'acv_total')::numeric;
+  v_insurance_deductible := (p_claim_financials->>'deductible')::numeric;
+  v_insurance_depreciation := (p_claim_financials->>'depreciation_total')::numeric;
+  v_o_and_p_included := COALESCE((p_profitability_signals->>'o_and_p_included')::boolean, false);
+  
+  -- Detect missing items for supplements
+  -- Check against insurance estimate and code requirements
+  IF p_profitability_signals IS NOT NULL THEN
+    v_missing_items := COALESCE(p_profitability_signals->'missing_items', '[]'::jsonb);
+    
+    -- Check if steep charge is missing from insurance but needed
+    IF v_steep_charge_flag THEN
+      -- Check if insurance line items include steep charge
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_line_items) li
+        WHERE (li->>'description' ILIKE '%steep%' OR li->>'code' ILIKE '%steep%')
+      ) THEN
+        -- Only add if not already in missing_items
+        IF NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%steep%'
+        ) THEN
+          v_missing_items := v_missing_items || jsonb_build_array('Add steep charge');
+          v_supplement_value := v_supplement_value + v_steep_charge_cost;
+        END IF;
+      END IF;
+    END IF;
+    
+    -- Check for drip edge (code-required item)
+    IF NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_line_items) li
+      WHERE li->>'description' ILIKE '%drip%edge%' OR li->>'code' ILIKE '%drip%'
+    ) THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%drip%'
+      ) THEN
+        v_missing_items := v_missing_items || jsonb_build_array('Add drip edge');
+        v_supplement_value := v_supplement_value + (v_perimeter_ft * v_drip_edge_rate);
+      END IF;
+    END IF;
+    
+    -- Check for starter course (code-required)
+    IF NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_line_items) li
+      WHERE li->>'description' ILIKE '%starter%' OR li->>'code' ILIKE '%starter%'
+    ) THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%starter%'
+      ) THEN
+        v_missing_items := v_missing_items || jsonb_build_array('Add starter course');
+        v_supplement_value := v_supplement_value + (v_perimeter_ft * v_starter_rate);
+      END IF;
+    END IF;
+    
+    -- Check for ridge vent (if we added it but insurance didn't have it)
+    IF v_ridge_vent_cost > 0 THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_line_items) li
+        WHERE li->>'description' ILIKE '%ridge%vent%' OR li->>'code' ILIKE '%vent%'
+      ) THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%ridge%vent%'
+        ) THEN
+          v_missing_items := v_missing_items || jsonb_build_array('Upgrade to ridge vent');
+          v_supplement_value := v_supplement_value + v_ridge_vent_cost;
+        END IF;
+      END IF;
+    END IF;
+    
+    -- Check for ice & water shield (if we added it but insurance didn't have it)
+    IF v_ice_water_cost > 0 THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_line_items) li
+        WHERE li->>'description' ILIKE '%ice%water%' OR li->>'description' ILIKE '%ice and water%'
+      ) THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%ice%water%'
+        ) THEN
+          v_missing_items := v_missing_items || jsonb_build_array('Add ice & water shield');
+          v_supplement_value := v_supplement_value + v_ice_water_cost;
+        END IF;
+      END IF;
+    END IF;
+    
+    -- Check for high-wind shingles (if material suggests it's needed)
+    -- This would be detected from profitability_signals or material type
+    IF v_material ILIKE '%wind%' OR EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(COALESCE(p_profitability_signals->'code_items_included', '[]'::jsonb)) ci
+      WHERE ci ILIKE '%wind%'
+    ) THEN
+      -- Check if insurance estimate includes high-wind specification
+      IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_line_items) li
+        WHERE li->>'description' ILIKE '%wind%' OR li->>'code' ILIKE '%wind%'
+      ) THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi WHERE mi ILIKE '%wind%'
+        ) THEN
+          v_missing_items := v_missing_items || jsonb_build_array('Upgrade to high-wind shingles');
+          -- Add ~5% to base cost for high-wind shingles
+          v_supplement_value := v_supplement_value + (v_base_install_cost * 0.05);
+        END IF;
+      END IF;
+    END IF;
+    
+    -- Add any code-required items from profitability_signals that aren't in insurance estimate
+    IF p_profitability_signals->'code_items_included' IS NOT NULL THEN
+      FOR v_code_item IN SELECT jsonb_array_elements_text(p_profitability_signals->'code_items_included')
+      LOOP
+        -- Check if this code item is in the insurance line items
+        IF NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(v_line_items) li
+          WHERE li->>'description' ILIKE '%' || v_code_item || '%'
+             OR li->>'code' ILIKE '%' || v_code_item || '%'
+        ) THEN
+          -- Check if already in missing_items
+          IF NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(v_missing_items) mi 
+            WHERE mi ILIKE '%' || v_code_item || '%'
+          ) THEN
+            v_missing_items := v_missing_items || jsonb_build_array('Add ' || v_code_item);
+            -- Estimate supplement value (rough estimate: 2% of base cost per code item)
+            v_supplement_value := v_supplement_value + (v_base_install_cost * 0.02);
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  
+  -- Build result
+  v_result := jsonb_build_object(
+    'roof_estimate', jsonb_build_object(
+      'base_rate_per_sq', v_base_rate_per_sq,
+      'squares', v_squares,
+      'steep_charge', v_steep_charge_cost,
+      'two_story_charge', v_two_story_cost,
+      'ice_and_water', v_ice_water_cost,
+      'ridge_vent_rate', v_ridge_vent_rate,
+      'calculated_total', v_calculated_total,
+      'profit_margin', v_profit_margin,
+      'final_bid_price', v_final_bid_price,
+      'line_items', v_line_items_array
+    ),
+    'insurance_comparison', jsonb_build_object(
+      'insurance_rcv', v_insurance_rcv,
+      'contractor_estimate', v_final_bid_price,
+      'difference', CASE WHEN v_insurance_rcv IS NOT NULL THEN v_insurance_rcv - v_final_bid_price ELSE NULL END
+    ),
+    'supplements', jsonb_build_object(
+      'missing_items_supplements', v_missing_items,
+      'supplement_value_estimate', v_supplement_value
+    ),
+    'pricing_source', v_pricing_data->>'pricing_source'
+  );
+  
+  RETURN v_result;
+END;
+$$;
+
+-- ============================================================================
+-- PART 7 — Triggers
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.tg_update_roof_estimate_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tr_update_roof_estimate_updated_at
+BEFORE UPDATE ON public.roof_estimates
+FOR EACH ROW
+EXECUTE FUNCTION public.tg_update_roof_estimate_updated_at();
+
+CREATE TRIGGER tr_update_roof_estimate_line_item_updated_at
+BEFORE UPDATE ON public.roof_estimate_line_items
+FOR EACH ROW
+EXECUTE FUNCTION public.tg_update_roof_estimate_updated_at();
+
+-- ============================================================================
+-- PART 8 — Row Level Security
+-- ============================================================================
+
+ALTER TABLE public.market_pricing_dataset ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roof_estimates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roof_estimate_line_items ENABLE ROW LEVEL SECURITY;
+
+-- Policies for market_pricing_dataset
+CREATE POLICY "Users can view market pricing in their workspace"
+  ON public.market_pricing_dataset FOR SELECT
+  USING (
+    workspace_id IS NULL OR workspace_id IN (
+      SELECT workspace_id FROM public.workspace_members 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can manage market pricing in their workspace"
+  ON public.market_pricing_dataset FOR ALL
+  USING (
+    workspace_id IN (
+      SELECT workspace_id FROM public.workspace_members 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- Policies for roof_estimates
+CREATE POLICY "Users can view roof estimates in their workspace"
+  ON public.roof_estimates FOR SELECT
+  USING (
+    workspace_id IN (
+      SELECT workspace_id FROM public.workspace_members 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can create roof estimates in their workspace"
+  ON public.roof_estimates FOR INSERT
+  WITH CHECK (
+    workspace_id IN (
+      SELECT workspace_id FROM public.workspace_members 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update roof estimates in their workspace"
+  ON public.roof_estimates FOR UPDATE
+  USING (
+    workspace_id IN (
+      SELECT workspace_id FROM public.workspace_members 
+      WHERE user_id = auth.uid()
+    )
+  );
+
+-- Policies for roof_estimate_line_items
+CREATE POLICY "Users can view line items for roof estimates in their workspace"
+  ON public.roof_estimate_line_items FOR SELECT
+  USING (
+    roof_estimate_id IN (
+      SELECT id FROM public.roof_estimates
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM public.workspace_members 
+        WHERE user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY "Users can create line items for roof estimates in their workspace"
+  ON public.roof_estimate_line_items FOR INSERT
+  WITH CHECK (
+    roof_estimate_id IN (
+      SELECT id FROM public.roof_estimates
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM public.workspace_members 
+        WHERE user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY "Users can update line items for roof estimates in their workspace"
+  ON public.roof_estimate_line_items FOR UPDATE
+  USING (
+    roof_estimate_id IN (
+      SELECT id FROM public.roof_estimates
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM public.workspace_members 
+        WHERE user_id = auth.uid()
+      )
+    )
+  );
+
+-- ============================================================================
+-- PART 9 — Trigger: Auto-Generate Estimate When Scope is Parsed
+-- ============================================================================
+-- Automatically trigger estimate generation when Block 20380 parses a roof scope
+
+CREATE OR REPLACE FUNCTION public.trigger_auto_generate_roof_estimate()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_should_generate boolean := false;
+BEGIN
+  -- Generate estimate if:
+  -- 1. Scope was just parsed (has_parsed_scope changed from false/null to true)
+  -- 2. No existing estimate exists for this thread
+  -- 3. Roof scope has required data (squares, material)
+  
+  IF OLD.has_parsed_scope IS DISTINCT FROM NEW.has_parsed_scope 
+     AND NEW.has_parsed_scope = true THEN
+    
+    -- Check if roof scope has required data
+    IF NEW.roof_scope IS NOT NULL 
+       AND (NEW.roof_scope->>'total_squares')::numeric > 0 
+       AND NEW.roof_scope->>'material' IS NOT NULL THEN
+      
+      -- Check if estimate already exists
+      IF NOT EXISTS (
+        SELECT 1 FROM public.roof_estimates 
+        WHERE thread_id = NEW.id 
+        AND status IN ('draft', 'sent', 'approved')
+      ) THEN
+        v_should_generate := true;
+      END IF;
+    END IF;
+  END IF;
+  
+  -- If conditions are met, queue estimate generation via pg_net (if available)
+  -- Otherwise, the frontend/API can check for has_parsed_scope = true and call the estimator
+  IF v_should_generate THEN
+    -- Note: In production, you might want to use pg_net to call the edge function
+    -- For now, we'll rely on the frontend/API to check and call the estimator
+    -- This trigger ensures the data is ready for estimation
+    
+    -- Optionally, you could use pg_net here:
+    -- PERFORM net.http_post(
+    --   url := current_setting('app.supabase_url') || '/functions/v1/roofing-ai-estimator-v1',
+    --   headers := jsonb_build_object(
+    --     'Content-Type', 'application/json',
+    --     'Authorization', 'Bearer ' || current_setting('app.supabase_service_role_key')
+    --   ),
+    --   body := jsonb_build_object(
+    --     'thread_id', NEW.id,
+    --     'workspace_id', NEW.workspace_id,
+    --     'trigger_reason', 'parsed_scope'
+    --   )
+    -- );
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_auto_generate_roof_estimate ON public.inbox_threads;
+CREATE TRIGGER trg_auto_generate_roof_estimate
+  AFTER UPDATE ON public.inbox_threads
+  FOR EACH ROW
+  WHEN (OLD.has_parsed_scope IS DISTINCT FROM NEW.has_parsed_scope)
+  EXECUTE FUNCTION public.trigger_auto_generate_roof_estimate();
+
+COMMENT ON FUNCTION public.trigger_auto_generate_roof_estimate IS 'Auto-triggers estimate generation when roof scope is parsed (Block 20490 integration with Block 20380)';
+COMMENT ON TRIGGER trg_auto_generate_roof_estimate ON public.inbox_threads IS 'Automatically generates roofing estimate when scope is parsed';
+
+-- ============================================================================
+-- PART 10 — Comments
+-- ============================================================================
+
+COMMENT ON TABLE public.market_pricing_dataset IS 'Market pricing dataset for roofing estimates (national defaults, upgradable to zip-code pricing)';
+COMMENT ON TABLE public.roof_estimates IS 'Detailed roofing estimates generated from parsed roof scope (Block 20490)';
+COMMENT ON TABLE public.roof_estimate_line_items IS 'Line items for roofing estimates';
+COMMENT ON FUNCTION public.get_market_pricing IS 'Get market pricing for a zip code (falls back to national default)';
+COMMENT ON FUNCTION public.calculate_roof_estimate IS 'Calculate roofing estimate from parsed roof scope, market pricing, and contractor preferences';
+

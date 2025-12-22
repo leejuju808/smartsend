@@ -58,14 +58,33 @@ export async function POST(req: Request) {
           .single();
 
         if (cc) {
-          await supabase.from("email_replies").insert([
+          const { data: insertedReply } = await supabase.from("email_replies").insert([
             {
               campaign_contact_id: cc.id,
               from_email: fromEmail,
               subject,
               body,
             },
-          ]);
+          ]).select('id').single();
+
+          // Trigger AI reply detection
+          if (insertedReply?.id && body) {
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ai-reply-detect`, {
+                method: "POST",
+                headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+                },
+                body: JSON.stringify({ 
+                  emailId: insertedReply.id, 
+                  body: body 
+                }),
+              });
+            } catch (e) {
+              console.error("Failed to trigger AI reply detection:", e);
+            }
+          }
 
           try {
             // Stop any active sequence run for this contact on reply

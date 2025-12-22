@@ -1,0 +1,11 @@
+email,first_name,last_name,company,title,phone,notes,tags
+jane@acme.com,Jane,Doe,Acme Corp,VP Sales,555-111-2222,High priority contact,"vip;beta;enterprise"
+john@example.com,John,Smith,Example Inc,Software Developer,555-222-3333,Met at conference,"developer;active"
+sarah@startup.io,Sarah,Johnson,StartupIO,CEO,555-333-4444,Potential partner,"startup;investor"
+mike@tech.com,Mike,Williams,Tech Solutions,CTO,555-444-5555,,"technical;enterprise"
+blocked@bad.com,Blocked,User,BadCo,Spammer,555-555-6666,Should be suppressed,""
+test@no-reply.com,Test,User,NoReply Inc,Operations,555-666-7777,Domain should be blocked,""
+jane@acme.com,Jane,Updated,Acme Corp,CEO,555-111-2222,Duplicate - should be skipped,"vip"
+invalid-email,Invalid,Email,Company,Title,555-777-8888,Invalid email format,""
+lisa@company.com,Lisa,Brown,Company Ltd,Manager,555-888-9999,Normal contact,"active"
+tom@spam-domain.com,Tom,Spam,Spam Inc,Marketer,555-999-0000,Pattern match test,"spam"

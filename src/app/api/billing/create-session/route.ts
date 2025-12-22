@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/server/supabase'
 
 export async function POST(req: Request) {
   try {
-    const { userId, priceId, coupon } = await req.json()
+    const { userId, priceId, coupon, refCode } = await req.json()
     if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
 
     const price = priceId || process.env.NEXT_PUBLIC_STRIPE_PRICE_ID
@@ -22,6 +22,12 @@ export async function POST(req: Request) {
       } catch {}
     }
 
+    // Build metadata with referral code if provided
+    const metadata: Record<string, string> = { user_id: String(userId) }
+    if (refCode) {
+      metadata.ref = String(refCode)
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_creation: 'if_required',
@@ -29,7 +35,10 @@ export async function POST(req: Request) {
       ...(discounts ? { discounts } : { allow_promotion_codes: true }),
       success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/dashboard/billing`,
-      metadata: { user_id: String(userId) },
+      metadata,
+      subscription_data: {
+        metadata: refCode ? { ref: String(refCode) } : {},
+      },
     })
 
     if (session.customer) {

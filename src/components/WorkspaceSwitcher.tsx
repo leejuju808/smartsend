@@ -1,47 +1,39 @@
-"use client"
-import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@/lib/supabase'
+'use client';
+import { useEffect, useState } from 'react';
 
-export default function WorkspaceSwitcher() {
-  const supabase = createClientComponentClient()
-  const [workspaces, setWorkspaces] = useState<any[]>([])
-  const [active, setActive] = useState<any>(null)
+export function WorkspaceSwitcher() {
+  const [items, setItems] = useState<any[]>([]);
+  const [active, setActive] = useState<string | null>(null);
 
   useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data } = await supabase
-        .from('workspace_members')
-        .select('workspace_id, workspaces(*)')
-        .eq('user_id', user.id)
-      const list = (data || []).map((m: any) => (m as any).workspaces)
-      setWorkspaces(list)
-      setActive(list[0] || null)
-      if (list[0]) localStorage.setItem('active_workspace', (list[0] as any).id)
-    }
-    load()
-  }, [supabase])
+    (async () => {
+      const r = await fetch('/api/me/workspaces');
+      const j = await r.json();
+      setItems(j.items || []);
+      setActive(j.active?.id || j.items?.[0]?.id || null);
+    })();
+  }, []);
+
+  function go(id: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('ws', id);
+    
+    // Set cookie
+    document.cookie = `ws=${id}; path=/; SameSite=Lax; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+    
+    window.location.href = url.toString();
+  }
 
   return (
-    <div className="mb-4">
-      <label className="block text-xs text-gray-500 mb-1">Workspace</label>
+    <div className="inline-flex items-center gap-2">
+      <span className="text-sm text-gray-600">Workspace</span>
       <select
-        className="w-full border rounded-lg p-2 text-sm"
-        value={active?.id || ''}
-        onChange={(e) => {
-          const ws = workspaces.find((w) => (w as any).id === e.target.value)
-          setActive(ws)
-          if (ws) localStorage.setItem('active_workspace', (ws as any).id)
-        }}
+        className="rounded-xl border px-3 py-2"
+        value={active ?? ''}
+        onChange={(e) => go(e.target.value)}
       >
-        {workspaces.map((w: any) => (
-          <option key={(w as any).id} value={(w as any).id}>
-            {(w as any).name}
-          </option>
-        ))}
+        {items.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
       </select>
     </div>
-  )
+  );
 }
-

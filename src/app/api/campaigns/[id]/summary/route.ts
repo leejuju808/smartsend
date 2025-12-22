@@ -24,6 +24,13 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", params.id)
     .gt("click_count", 0);
+  
+  // Heatmap v2 data
+  const [{ data: heatmap_hour }, { data: heatmap_dow }] = await Promise.all([
+    supabase.rpc("campaign_heatmap_hour", { cid: params.id }),
+    supabase.rpc("campaign_heatmap_dow", { cid: params.id })
+  ]);
+
   return NextResponse.json({
     status: camp?.status,
     total: camp?.total || 0,
@@ -32,6 +39,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     skipped: skipped || camp?.skipped || 0,
     opens: openCount || 0,
     clicks: clickCount || 0,
+    heatmap_hour: heatmap_hour || [],
+    heatmap_dow: heatmap_dow || [],
   });
 }
 

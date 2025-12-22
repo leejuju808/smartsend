@@ -1,84 +1,82 @@
-export const runtime = "nodejs";
-
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import { normalizeEmail } from "@/lib/email";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from "@supabase/supabase-js";
+import { getServerSupabase } from '@/lib/supabase/server';
 
 export async function GET() {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ items: [] });
-  const { data } = await supabase
-    .from("suppressions")
-    .select("id, kind, value_lower, reason, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  return NextResponse.json({ items: data || [] });
-}
+  try {
+    const supabase = getServerSupabase();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  const body = await req.json().catch(() => ({}));
-  let { kind, value, reason } = body || {};
-  kind = (kind || "").toString();
-  value = (value || "").toString().trim().toLowerCase();
-  if (!["email","domain"].includes(kind) || !value) {
-    return NextResponse.json({ error: "kind=email|domain and value required" }, { status: 400 });
+    const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+    // assumes RLS by user_id; expose via a secure view if needed
+    const { data, error } = await sb
+      .from("suppressions")
+      .select("id, created_at, email, domain, source, note")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ rows: data ?? [] }, { headers:{ "content-type":"application/json" } });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (kind === "email") value = normalizeEmail(value);
-
-  const { error } = await supabase.from("suppressions").upsert(
-    [{ user_id: user.id, kind, value_lower: value, reason: reason || null }],
-    { onConflict: "user_id,kind,value_lower" }
-  );
-  if (error) return NextResponse.json({ error: "Could not add" }, { status: 500 });
-  return NextResponse.json({ ok: true });
 }
 
-export const runtime = "nodejs";
+export async function POST(req:Request) {
+  try {
+    const supabase = getServerSupabase();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import { normalizeEmail } from "@/lib/email";
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-export async function GET() {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ items: [] });
-  const { data } = await supabase
-    .from("suppressions")
-    .select("id, kind, value_lower, reason, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  return NextResponse.json({ items: data || [] });
-}
+    const { email, domain, note } = await req.json();
+    if (!email && !domain) {
+      return NextResponse.json({ error: "email or domain required" }, { status: 400 });
+    }
 
-export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+    
+    // Resolve current user via RLS; if you keep user_id on JWT, prefer an RPC that uses auth.uid()
+    const userId = user.id;
+    if (!userId) return NextResponse.json({ error: "auth required" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
-  let { kind, value, reason } = body || {};
-  kind = (kind || "").toString();
-  value = (value || "").toString().trim().toLowerCase();
-  if (!["email","domain"].includes(kind) || !value) {
-    return NextResponse.json({ error: "kind=email|domain and value required" }, { status: 400 });
+    const { data, error } = await sb.rpc("upsert_suppression", {
+      p_user: userId,
+      p_email: email ?? null,
+      p_domain: domain ?? null,
+      p_source: "admin",
+      p_note: note ?? null
+    });
+    
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, id: data }, { headers:{ "content-type":"application/json" } });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (kind === "email") value = normalizeEmail(value);
-
-  const { error } = await supabase.from("suppressions").upsert(
-    [{ user_id: user.id, kind, value_lower: value, reason: reason || null }],
-    { onConflict: "user_id,kind,value_lower" }
-  );
-  if (error) return NextResponse.json({ error: "Could not add" }, { status: 500 });
-  return NextResponse.json({ ok: true });
 }
 
+export async function DELETE(req:Request) {
+  try {
+    const supabase = getServerSupabase();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id")!;
+    const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+    await sb.from("suppressions").delete().eq("id", id).eq("user_id", user.id);
+    return NextResponse.json({ ok:true }, { headers:{ "content-type":"application/json" } });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

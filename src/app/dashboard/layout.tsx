@@ -1,37 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Mail, 
-  LogOut, 
-  User, 
-  Settings, 
-  Menu, 
-  X,
-  Zap,
-  History,
-  CreditCard,
-  Gift,
-  BarChart3,
-  KanbanSquare,
-  Users,
-  Activity
-} from 'lucide-react'
 import { createClientComponentClient } from '@/lib/supabase'
-import { canManageBilling } from '@/utils/permissions'
-import FeedbackWidget from '@/components/FeedbackWidget'
-import UpgradeNudgeModal from '@/components/billing/UpgradeNudgeModal'
-import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
-import UpgradeBanner from '@/components/UpgradeBanner'
-import TrialBadge from '@/components/TrialBadge'
-import DemoTourBanner from '@/components/DemoTourBanner'
-import UpgradeCelebration from '@/components/UpgradeCelebration'
-import UsageBadgeClient from '@/components/UsageBadgeClient'
-import AnnualNudge from '@/components/AnnualNudge'
-import UpgradeWall from '@/components/UpgradeWall'
-import DomainNudge from '@/components/DomainNudge'
+import { WorkspaceSwitcher } from '@/components/WorkspaceSwitcher'
+import { NavigationProvider } from '@/contexts/NavigationContext'
+import { Sidebar } from '@/components/nav/Sidebar'
+import { HeaderBar } from '@/components/nav/HeaderBar'
+import { MobileNav } from '@/components/nav/MobileNav'
+import { ProofOfDominanceTopLine } from '@/components/dashboard/ProofOfDominanceTopLine'
+import { isCoachingUIEnabled } from '@/lib/feature-flags'
 
 export default function DashboardLayout({
   children,
@@ -39,64 +17,102 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [user, setUser] = useState<any>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [billingPaused, setBillingPaused] = useState(false)
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const [outreachState, setOutreachState] = useState<'running' | 'paused'>('running')
+  const [outreachPausedAt, setOutreachPausedAt] = useState<string | null>(null)
+  const [outreachPausedReason, setOutreachPausedReason] = useState<string | null>(null)
+  const [outreachCanceled, setOutreachCanceled] = useState(false)
+  const [resumeLoading, setResumeLoading] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [quiet, setQuiet] = useState(false)
-  const [ready, setReady] = useState(false)
-  const [myRole, setMyRole] = useState<string | null>(null)
-  
+
   const supabase = createClientComponentClient()
   const router = useRouter()
 
   useEffect(() => {
-    const getUser = async () => {
+    const run = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
-      } else {
-        setUser(user)
-        const { data } = await supabase
-          .from('onboarding_progress')
-          .select('connected_mailbox, imported_leads, launched_sequence')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (data && data.connected_mailbox && data.imported_leads && data.launched_sequence) setReady(true)
-
-        // Load role for active workspace (if any)
-        try {
-          const active = localStorage.getItem('active_workspace')
-          if (active) {
-            const { data: m } = await supabase
-              .from('workspace_members')
-              .select('role')
-              .eq('workspace_id', active)
-              .eq('user_id', user.id)
-              .maybeSingle()
-            setMyRole((m as any)?.role ?? null)
-          }
-        } catch {}
+        return
       }
+
+      setUser(user)
+
+      // Best-effort: enforce onboarding if needed.
+      try {
+        const coaching = isCoachingUIEnabled()
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('onboarding_complete, team_id, subscription_status')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        const status = String((profile as any)?.subscription_status || '').toLowerCase()
+        setBillingPaused(status === 'past_due' || status === 'unpaid')
+
+        let shouldOnboard = false
+        if (profile) {
+          if (!(profile as any).onboarding_complete) {
+            shouldOnboard = true
+          } else if ((profile as any).team_id) {
+            const { count } = await supabase
+              .from('campaigns')
+              .select('*', { count: 'exact', head: true })
+              .eq('team_id', (profile as any).team_id)
+
+            if (!count || count === 0) {
+              shouldOnboard = true
+            }
+          }
+        }
+
+        // BLOCK 272500 — Internalization Sprint: no forced onboarding by default.
+        if (coaching && shouldOnboard && !window.location.pathname.includes('/dashboard/onboarding')) {
+          router.push('/dashboard/onboarding')
+          return
+        }
+      } catch {
+        // ignore
+      }
+
+      // BLOCK 269500+: Workspace-wide OFF switch (running/paused) is the source of truth.
+      try {
+        const active =
+          localStorage.getItem('active_workspace') ||
+          localStorage.getItem('workspace_id') ||
+          localStorage.getItem('activeWorkspace') ||
+          null
+
+        if (active) {
+          setWorkspaceId(active)
+          const res = await fetch(`/api/outreach/status?workspace_id=${encodeURIComponent(active)}`, {
+            cache: 'no-store',
+          })
+          const j = await res.json().catch(() => null)
+          const pausedReason = String((j as any)?.outreach?.paused_reason || '')
+          const state = String((j as any)?.outreach?.state || 'running')
+          const pausedAt = ((j as any)?.outreach?.paused_at as string | null) ?? null
+
+          setOutreachState(state === 'paused' ? 'paused' : 'running')
+          setOutreachPausedReason(pausedReason || null)
+          setOutreachPausedAt(pausedAt)
+
+          setOutreachCanceled(state === 'paused' && pausedReason === 'billing_canceled')
+        }
+      } catch {
+        setOutreachCanceled(false)
+        setOutreachState('running')
+        setOutreachPausedReason(null)
+        setOutreachPausedAt(null)
+      }
+
       setLoading(false)
     }
 
-    getUser()
+    run()
   }, [supabase, router])
-
-  useEffect(() => {
-    // Local quiet hours banner: show midnight-6am local time
-    const hour = new Date().getHours()
-    setQuiet(hour < 6)
-    const id = setInterval(() => {
-      const h = new Date().getHours()
-      setQuiet(h < 6)
-    }, 60_000)
-    return () => clearInterval(id)
-  }, [])
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
 
   if (loading) {
     return (
@@ -106,329 +122,114 @@ export default function DashboardLayout({
     )
   }
 
+  const systemOff = billingPaused || outreachState === 'paused' || outreachCanceled
+
+  async function resumeSmartSend() {
+    if (!workspaceId) return
+    setResumeLoading(true)
+    setResumeError(null)
+    try {
+      const res = await fetch('/api/outreach/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspaceId, state: 'running' }),
+      })
+      const j = await res.json().catch(() => null)
+      if (!res.ok || !(j as any)?.ok) {
+        throw new Error(String((j as any)?.error || 'Failed to resume'))
+      }
+      window.location.reload()
+    } catch (e: any) {
+      setResumeError(e?.message || 'Failed to resume')
+    } finally {
+      setResumeLoading(false)
+    }
+  }
+
+  // Non-negotiable rule: SmartSend OFF => zero dashboard output.
+  if (systemOff) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white px-6">
+        <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business health</div>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">
+              SmartSend OFF
+            </span>
+            <span className="text-sm font-semibold text-gray-900">Business exposed.</span>
+          </div>
+
+          <div className="mt-4 text-xl font-semibold text-gray-900">No system running.</div>
+          <div className="mt-2 text-sm text-gray-600">
+            Forecasts, projections, capacity, cash timing, and hiring signals require SmartSend to be ON.
+          </div>
+
+          {outreachPausedReason ? (
+            <div className="mt-3 text-xs text-gray-500">
+              Reason: <span className="font-semibold text-gray-700">{outreachPausedReason}</span>
+              {outreachPausedAt ? (
+                <>
+                  {' '}· Paused at{' '}
+                  <span className="font-semibold text-gray-700">
+                    {new Date(outreachPausedAt).toLocaleString()}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {workspaceId && outreachCanceled ? (
+            <div className="mt-4 text-sm font-semibold text-gray-900">
+              SmartSend is OFF (billing canceled).
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex items-center gap-3">
+            <button
+              onClick={resumeSmartSend}
+              disabled={!workspaceId || resumeLoading || outreachCanceled}
+              className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {resumeLoading ? 'Resuming…' : 'Resume SmartSend'}
+            </button>
+            {resumeError ? <div className="text-sm font-semibold text-red-600">{resumeError}</div> : null}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <UpgradeCelebration />
-      {/* Mobile sidebar */}
-      <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
-        <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white">
-          <div className="flex h-16 items-center justify-between px-4">
-            <div className="flex items-center">
-              <Mail className="h-8 w-8 text-blue-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">SmartSend</span>
+    <NavigationProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar />
+        <MobileNav />
+
+        <div className="lg:pl-64">
+          <div className="sticky top-0 z-40 flex h-14 items-center border-b border-gray-200 bg-white px-4 shadow-sm sm:px-6 lg:px-8">
+            <div className="hidden lg:block w-64">
+              <WorkspaceSwitcher />
             </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-          <nav className="flex-1 space-y-1 px-2 py-4">
-            <Link
-              href="/dashboard/overview"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <BarChart3 className="mr-3 h-5 w-5" />
-              Overview
-            </Link>
-            <Link
-              href="/dashboard/analytics"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Activity className="mr-3 h-5 w-5" />
-              Analytics
-            </Link>
-            <Link
-              href="/dashboard"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-100"
-            >
-              <Zap className="mr-3 h-5 w-5" />
-              Generate Emails
-            </Link>
-            <Link
-              href="/dashboard/history"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <History className="mr-3 h-5 w-5" />
-              Email History
-            </Link>
-            <Link
-              href="/dashboard/contacts"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Users className="mr-3 h-5 w-5" />
-              Contacts
-            </Link>
-            <Link
-              href="/dashboard/logs"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <History className="mr-3 h-5 w-5" />
-              Logs
-            </Link>
-            <Link
-              href="/dashboard/account"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <User className="mr-3 h-5 w-5" />
-              Account
-            </Link>
-            <Link
-              href="/dashboard/settings"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Settings className="mr-3 h-5 w-5" />
-              Settings
-            </Link>
-            {canManageBilling(myRole) && (
-              <Link
-                href="/dashboard/billing"
-                className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-              >
-                <CreditCard className="mr-3 h-5 w-5" />
-                Billing
-              </Link>
-            )}
-            <Link
-              href="/dashboard/referrals"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Gift className="mr-3 h-5 w-5" />
-              Referrals
-            </Link>
-            <Link
-              href="/dashboard/deliverability"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Settings className="mr-3 h-5 w-5" />
-              Deliverability
-            </Link>
-            <Link
-              href="/dashboard/campaigns"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <History className="mr-3 h-5 w-5" />
-              Campaigns
-            </Link>
-            <Link
-              href="/dashboard/pipeline"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <KanbanSquare className="mr-3 h-5 w-5" />
-              Pipeline
-            </Link>
-            <Link
-              href="/dashboard/team"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Users className="mr-3 h-5 w-5" />
-              Team
-            </Link>
-          </nav>
-          <div className="border-t border-gray-200 p-4">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
-                  <span className="text-sm font-medium text-white">
-                    {user?.email?.charAt(0).toUpperCase()}
+            <div className="ml-auto">
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:block">
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                    Business health: SmartSend ON
                   </span>
                 </div>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700">{user?.email}</p>
+                <HeaderBar user={user} />
               </div>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="mt-3 flex w-full items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <LogOut className="mr-3 h-5 w-5" />
-              Sign out
-            </button>
           </div>
-          {ready && <span className="ml-auto text-xs rounded-full bg-green-100 text-green-700 px-2 py-1">Ready to Launch ✅</span>}
-        </div>
-      </div>
 
-      {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex flex-col flex-grow bg-white border-r border-gray-200">
-          <div className="flex h-16 items-center px-4">
-            <Mail className="h-8 w-8 text-blue-600" />
-            <span className="ml-2 text-xl font-bold text-gray-900">SmartSend</span>
-          </div>
-          <nav className="flex-1 space-y-1 px-2 py-4">
-            <WorkspaceSwitcher />
-            <Link
-              href="/dashboard/overview"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <BarChart3 className="mr-3 h-5 w-5" />
-              Overview
-            </Link>
-            <Link
-              href="/dashboard/analytics"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Activity className="mr-3 h-5 w-5" />
-              Analytics
-            </Link>
-            <Link
-              href="/dashboard"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-100"
-            >
-              <Zap className="mr-3 h-5 w-5" />
-              Generate Emails
-            </Link>
-            <Link
-              href="/dashboard/history"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <History className="mr-3 h-5 w-5" />
-              Email History
-            </Link>
-            <Link
-              href="/dashboard/contacts"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Users className="mr-3 h-5 w-5" />
-              Contacts
-            </Link>
-            <Link
-              href="/dashboard/logs"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <History className="mr-3 h-5 w-5" />
-              Logs
-            </Link>
-            {canManageBilling(myRole) && (
-              <Link
-                href="/dashboard/billing"
-                className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-              >
-                <CreditCard className="mr-3 h-5 w-5" />
-                Billing
-              </Link>
-            )}
-            <Link
-              href="/dashboard/referrals"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Gift className="mr-3 h-5 w-5" />
-              Referrals
-            </Link>
-            <Link
-              href="/dashboard/deliverability"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Settings className="mr-3 h-5 w-5" />
-              Deliverability
-            </Link>
-            <Link
-              href="/dashboard/campaigns"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Settings className="mr-3 h-5 w-5" />
-              Campaigns
-            </Link>
-            <Link
-              href="/dashboard/pipeline"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <KanbanSquare className="mr-3 h-5 w-5" />
-              Pipeline
-            </Link>
-            <Link
-              href="/dashboard/team"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Users className="mr-3 h-5 w-5" />
-              Team
-            </Link>
-            <Link
-              href="/dashboard/account"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <User className="mr-3 h-5 w-5" />
-              Account
-            </Link>
-            <Link
-              href="/dashboard/settings"
-              className="flex items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <Settings className="mr-3 h-5 w-5" />
-              Settings
-            </Link>
-          </nav>
-          <div className="border-t border-gray-200 p-4">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
-                  <span className="text-sm font-medium text-white">
-                    {user?.email?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700">{user?.email}</p>
-              </div>
+          <main className="py-6">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <ProofOfDominanceTopLine />
+              {children}
             </div>
-            <button
-              onClick={handleSignOut}
-              className="mt-3 flex w-full items-center px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900"
-            >
-              <LogOut className="mr-3 h-5 w-5" />
-              Sign out
-            </button>
-          </div>
+          </main>
         </div>
       </div>
-
-      {/* Main content */}
-      <div className="lg:pl-64">
-        <UpgradeBanner />
-        <AnnualNudge />
-        <DemoTourBanner />
-        <DomainNudge />
-        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            className="-m-2.5 p-2.5 text-gray-700 lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <div className="hidden lg:block w-64">
-            <WorkspaceSwitcher />
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <TrialBadge />
-            {ready && (
-              <span className="text-xs rounded-full bg-green-100 text-blue-700 px-2 py-1">Ready to Launch ✅</span>
-            )}
-            {user && <UsageBadgeClient userId={user.id} />}
-          </div>
-        </div>
-
-        {quiet && (
-          <div className="lg:pl-64">
-            <div className="bg-yellow-50 border-y border-yellow-200 text-yellow-800 text-sm px-4 py-2">
-              Sending resumes at 6am.
-            </div>
-          </div>
-        )}
-
-        <main className="py-6">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {children}
-          </div>
-        </main>
-        <FeedbackWidget />
-        <UpgradeNudgeModal />
-        <UpgradeWall />
-      </div>
-    </div>
+    </NavigationProvider>
   )
-} 
+}

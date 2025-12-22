@@ -1,30 +1,20 @@
 "use client"
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
-type StarProps = { filled: boolean; onClick: () => void; onMouseEnter: () => void; onMouseLeave: () => void }
-
-function Star({ filled, onClick, onMouseEnter, onMouseLeave }: StarProps) {
-  return (
-    <button
-      type="button"
-      aria-label="rating star"
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      className={`w-6 h-6 ${filled ? 'text-yellow-400' : 'text-gray-300'} transition-colors`}
-    >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.802 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.802-2.034a1 1 0 00-1.175 0L6.56 16.281c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.926 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-      </svg>
-    </button>
-  )
-}
+const FEEDBACK_CATEGORIES = [
+  { value: 'ui', label: 'UI / Design' },
+  { value: 'bug', label: 'Bug' },
+  { value: 'feature', label: 'Feature Request' },
+  { value: 'performance', label: 'Performance' },
+  { value: 'other', label: 'Other' },
+] as const
 
 export default function FeedbackWidget() {
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const [hover, setHover] = useState<number | null>(null)
-  const [rating, setRating] = useState<number>(0)
-  const [comment, setComment] = useState('')
+  const [category, setCategory] = useState<string>('')
+  const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
@@ -35,13 +25,26 @@ export default function FeedbackWidget() {
   }, [])
 
   const submit = async () => {
-    if (!rating) return
+    if (!category || !message.trim()) return
     setSubmitting(true)
     try {
-      const res = await fetch('/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rating, comment }) })
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          message: message.trim(),
+          page_pathname: pathname,
+        }),
+      })
       if (res.ok) {
         setSubmitted(true)
-        setTimeout(() => setOpen(false), 1200)
+        setCategory('')
+        setMessage('')
+        setTimeout(() => {
+          setOpen(false)
+          setSubmitted(false)
+        }, 1500)
       }
     } finally {
       setSubmitting(false)
@@ -53,41 +56,55 @@ export default function FeedbackWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="px-3 py-2 rounded-full bg-black text-white text-sm shadow-md hover:opacity-90"
+          className="px-3 py-2 rounded-full bg-black text-white text-sm shadow-md hover:opacity-90 transition-opacity"
+          aria-label="Send Feedback"
         >
-          Feedback
+          Send Feedback
         </button>
       )}
 
       {open && (
-        <div className="w-80 rounded-lg border bg-white shadow-lg p-3">
-          <div className="text-sm font-medium mb-2">How’s it going?</div>
-          <div className="flex items-center gap-1 mb-2">
-            {[1,2,3,4,5].map(n => (
-              <Star
-                key={n}
-                filled={(hover ?? rating) >= n}
-                onClick={() => setRating(n)}
-                onMouseEnter={() => setHover(n)}
-                onMouseLeave={() => setHover(null)}
-              />
+        <div className="w-80 rounded-lg border bg-white shadow-lg p-4">
+          <div className="text-sm font-medium mb-3">Send Feedback</div>
+          
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full border rounded p-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">Select category...</option>
+            {FEEDBACK_CATEGORIES.map((cat) => (
+              <option key={cat.value} value={cat.value}>
+                {cat.label}
+              </option>
             ))}
-          </div>
+          </select>
+
           <textarea
-            placeholder="What’s broken or confusing?"
-            className="w-full border rounded p-2 text-sm mb-2"
-            rows={3}
-            value={comment}
-            onChange={e => setComment(e.target.value)}
+            placeholder="What's broken, confusing, or what feature would you like?"
+            className="w-full border rounded p-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-black resize-none"
+            rows={4}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
           />
+
           <div className="flex items-center justify-between">
-            <button onClick={()=>setOpen(false)} className="text-xs text-gray-600 hover:underline">Close</button>
+            <button
+              onClick={() => {
+                setOpen(false)
+                setCategory('')
+                setMessage('')
+              }}
+              className="text-xs text-gray-600 hover:underline"
+            >
+              Close
+            </button>
             <button
               onClick={submit}
-              disabled={submitting || rating===0}
-              className="px-3 py-1.5 bg-black text-white rounded-md text-xs disabled:opacity-50"
+              disabled={submitting || !category || !message.trim()}
+              className="px-3 py-1.5 bg-black text-white rounded-md text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitted ? 'Thanks!' : (submitting ? 'Sending…' : 'Send')}
+              {submitted ? 'Thanks!' : submitting ? 'Sending…' : 'Send'}
             </button>
           </div>
         </div>

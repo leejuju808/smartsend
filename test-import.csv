@@ -1,0 +1,4 @@
+email,name,start_in_hours
+alice@example.com,Alice,0
+bob@example.com,Bob,2
+charlie@example.com,Charlie,1

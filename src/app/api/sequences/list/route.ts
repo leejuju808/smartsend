@@ -1,27 +1,11 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/server/supabase";
-
-/** Replace with real auth */
-function getUserId(req: Request) {
-  const url = new URL(req.url);
-  return url.searchParams.get("userId");
+import { cookies } from "next/headers";
+import { createBrowserClient } from "@supabase/ssr";
+export async function GET(){
+  const cookieStore = cookies();
+  const sb = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies:{ get:(k)=>cookieStore.get(k)?.value }});
+  const { data:{ user }} = await sb.auth.getUser(); if(!user) return NextResponse.json({ sequences: [] });
+  const { data, error } = await sb.from("sequences").select("id,name,active,daily_cap,created_at").eq("user_id", user.id).order("created_at",{ascending:false});
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ sequences: data });
 }
-
-export async function GET(req: Request) {
-  const userId = getUserId(req);
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const url = new URL(req.url)
-  const teamId = url.searchParams.get('teamId')
-  const { data, error } = teamId
-    ? await supabaseAdmin
-        .from('sequences')
-        .select('id,name,status,created_at')
-        .eq('team_id', teamId)
-        .order('created_at', { ascending: false })
-    : await supabaseAdmin.rpc("sequences_with_metrics", { p_owner: userId });
-  if (error) return NextResponse.json({ error: String(error) }, { status: 500 });
-
-  return NextResponse.json({ items: data ?? [] });
-}
-

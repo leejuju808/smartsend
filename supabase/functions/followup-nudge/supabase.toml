@@ -1,0 +1,13 @@
+[functions.followup-nudge]
+verify_jwt = false
+
+[functions.followup-nudge.environment]
+CRON_SECRET = "set-a-random-string"
+NUDGE_BATCH = "20"
+
+[[functions.followup-nudge.cron]]
+schedule = "*/5 * * * *"
+endpoint = "/followup-nudge?key=set-a-random-string"
+
+
+

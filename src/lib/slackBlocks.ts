@@ -44,7 +44,7 @@ export function promoBlocks(percent = 20, minutesLeft = 30, promoCodeId?: string
   const monthly = `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/billing?plan=monthly&promo=${promoCodeId || ""}`;
   return [
     { type: "section", text: { type: "mrkdwn", text: `:fire: *${percent}% off ends in ${minutesLeft}m*` } },
-    { type: "context", elements: [{ type: "mrkdwn", text: "Unlock unlimited replies + full extension access." }] },
+    { type: "context", elements: [{ type: "mrkdwn", text: "Unlock higher reply limits + full extension access." }] },
     { 
       type: "actions", 
       elements: [

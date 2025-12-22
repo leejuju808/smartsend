@@ -1,0 +1,16 @@
+{
+  "name": "@aurev/core-sdk",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "type": "module",
+  "types": "index.ts",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.42.0",
+    "stripe": "^15.0.0"
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.42.0",
+    "stripe": "^15.0.0"
+  }
+}
+

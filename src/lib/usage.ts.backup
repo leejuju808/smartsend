@@ -2,8 +2,8 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase'
 import { cookies } from 'next/headers'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { monthWindow } from '@/lib/plan'
-import { getPlanInfo } from '@/lib/plan'
+import { monthWindow } from '@/lib/plan-utils'
+import { getPlanInfo } from '@/lib/plan-utils'
 export type UsageEvent = {
   userId: string;
   feature: string;
